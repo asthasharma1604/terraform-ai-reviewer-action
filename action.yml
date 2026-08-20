@@ -5,10 +5,8 @@ inputs:
   gemini_api_key:
     description: 'API Key for Google Gemini'
     required: true
-
-inputs:
-  gemini_api_key:
-    description: 'API Key for Google Gemini'
+  github_token:
+    description: 'GitHub Token'
     required: true
 
 runs:
