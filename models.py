@@ -27,3 +27,4 @@ class ReviewResponse(BaseModel):
     security_issues: list[SecurityFinding]
     cost_issues: list[CostFinding]
     recommended_tf_code: str | None
+    fix_suggestions: list[FixSuggestion]
