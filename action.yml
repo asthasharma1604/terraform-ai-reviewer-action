@@ -1,5 +1,10 @@
 name: 'AI Terraform PR Reviewer'
-description: 'Analyzes Terraform Pull Requests for security and cost issues using OpenAI.'
+description: 'Analyzes Terraform Pull Requests for security and cost issues using AI.'
+
+inputs:
+  gemini_api_key:
+    description: 'API Key for Google Gemini'
+    required: true
 
 runs:
   using: "composite"
@@ -13,12 +18,32 @@ runs:
       run: pip install PyGithub openai pydantic google-genai
       shell: bash
 
-    - name: Run AI Review Script
+      # Security Analysis
+    - name: 🔒 Security Review
       env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        GITHUB_TOKEN: ${{ secrets.REVIEW_CODE_TOKEN }}
+        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO_NAME: ${{ github.repository }}
-      run: python ${{ github.action_path }}/review.py
+      run: python ${{ github.action_path }}/review.py --mode security
+      shell: bash
+
+      # Cost Analysis
+    - name: 💰 Cost Optimization
+      env:
+        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO_NAME: ${{ github.repository }}
+      run: python ${{ github.action_path }}/review.py --mode cost
+      shell: bash
+
+      # Suggested Fixes
+    - name: ✨ Fix Suggestions
+      env:
+        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO_NAME: ${{ github.repository }}
+      run: python ${{ github.action_path }}/review.py --mode fixes
       shell: bash
