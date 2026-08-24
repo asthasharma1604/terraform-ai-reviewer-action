@@ -1,14 +1,12 @@
 name: 'AI Terraform PR Reviewer'
-description: 'Analyzes Terraform Pull Requests for security and cost issues using AI.'
+description: 'Reviews Terraform Code with OpenAI for dangerous changes, security risks, cost optimization, architecture improvements, and code fixes.'
 
 inputs:
-  gemini_api_key:
-    description: 'API Key for Google Gemini'
+  openai_api_key:
+    description: 'API Key for OpenAI'
     required: true
-
-inputs:
-  gemini_api_key:
-    description: 'API Key for Google Gemini'
+  github_token:
+    description: 'GitHub Token'
     required: true
 
 runs:
@@ -20,35 +18,43 @@ runs:
         python-version: '3.10'
 
     - name: Install dependencies
-      run: pip install PyGithub openai pydantic google-genai
+      run: pip install PyGithub openai pydantic
       shell: bash
 
-      # Security Analysis
+    - name: 🧠 Run AI Analysis
+      env:
+        OPENAI_API_KEY: ${{ inputs.openai_api_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO_NAME: ${{ github.repository }}
+        PLAN_PATH: ${{ inputs.plan_path }}
+      run: python -u ${{ github.action_path }}/review.py --mode analyze
+      shell: bash
+
+    - name: 🚨 Dangerous Changes
+      run: python -u ${{ github.action_path }}/review.py --mode dangerous
+      shell: bash
+
     - name: 🔒 Security Review
-      env:
-        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
-        REPO_NAME: ${{ github.repository }}
-      run: python ${{ github.action_path }}/review.py --mode security
+      run: python -u ${{ github.action_path }}/review.py --mode security
       shell: bash
 
-      # Cost Analysis
     - name: 💰 Cost Optimization
-      env:
-        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
-        REPO_NAME: ${{ github.repository }}
-      run: python ${{ github.action_path }}/review.py --mode cost
+      run: python -u ${{ github.action_path }}/review.py --mode cost
       shell: bash
 
-      # Suggested Fixes
+    - name: 🏗️ Architecture Suggestions
+      run: python -u ${{ github.action_path }}/review.py --mode architecture
+      shell: bash
+
     - name: ✨ Fix Suggestions
+      run: python -u ${{ github.action_path }}/review.py --mode fixes
+      shell: bash
+    
+    - name: 💬 Post Inline PR Comments
       env:
-        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
-        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GITHUB_TOKEN: ${{ inputs.github_token }} # It needs this to write comments!
         PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO_NAME: ${{ github.repository }}
-      run: python ${{ github.action_path }}/review.py --mode fixes
+      run: python -u ${{ github.action_path }}/review.py --mode inline
       shell: bash

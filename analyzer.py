@@ -1,17 +1,28 @@
+import os
+
 from github import Github, Auth
-from google import genai
-from google.genai import types
+from openai import OpenAI
 from models import ReviewResponse
+import sys
 
 SYSTEM_PROMPT = """
-You are a Cloud Security & FinOps Expert. Analyze the provided Terraform code.
-The code provided to you includes line numbers at the start of each line (e.g., "1: resource...").
-Identify security risks, cost optimization opportunities, and provide specific code fixes.
-For every issue or fix you find, you MUST specify the exact `file_name` and the exact `line_numbers` (e.g., "15" or "15-20") where the issue occurs based on the provided context.
-Provide a clear summary, security risks, cost optimization tips, and a list of specific code fix suggestions.
+You are a Cloud Security, FinOps, and Cloud Architecture Expert. 
+You will be provided with Terraform source code and optionally the `terraform plan` output.
+Identify security risks, cost optimization opportunities, architectural improvements, and provide specific code fixes.
+If `terraform plan` output is provided, aggressively analyze it to detect DANGEROUS CHANGES such as:
+- Resource destruction (destroy)
+- Resource replacement (replace)
+- Potential downtime or data loss
+- Permission changes or network exposure
+
+For code issues, specify `file_name` and `line_numbers`.
+Provide a clear summary, security risks, cost optimization tips, architecture best practices, dangerous plan changes, and code fixes.
+
+When summarizing the terraform plan, strictly classify actions using these emojis: Create (🟢), Update (🟡), Replace (🟠), and Destroy (🔴).
 """
 
 def fetch_tf_code(repo_name, pr_number, token):
+    print(f"Connecting to GitHub repo: {repo_name} (PR #{pr_number})...", flush=True)
     # Downloads modified Terraform files from the PR and injects line numbers.
     auth = Auth.Token(token)
     gh_client = Github(auth=auth)
@@ -20,7 +31,10 @@ def fetch_tf_code(repo_name, pr_number, token):
     pr = repo.get_pull(pr_number)
 
     tf_code_context = ""
-    for file in pr.get_files():
+    files = list(pr.get_files())
+    print(f"Found {len(files)} total changed file(s) in PR.", flush=True)
+
+    for file in files:
         if file.filename.endswith(".tf") and file.status != "removed":
             try:
                 content_file = repo.get_contents(file.filename, ref=pr.head.sha)
@@ -36,20 +50,37 @@ def fetch_tf_code(repo_name, pr_number, token):
 
     return tf_code_context
 
-def analyze_with_gemini(tf_code_context, gemini_key):
-    # Sends the formatted code to Gemini and returns structured JSON.
-    gemini_client = genai.Client(api_key=gemini_key)
-    full_prompt = f"Review this Terraform code:\n\n{tf_code_context}"
-    
-    response = gemini_client.models.generate_content(
-        model='gemini-3.6-flash',
-        contents=full_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            response_mime_type="application/json",
-            response_schema=ReviewResponse,
+def analyze_with_openai(tf_code_context, plan_path, openai_key):
+    print("Initializing OpenAI client with 60s timeout...", flush=True)
+    # Sends the formatted code to OpenAI and returns structured JSON.
+    openai_client = OpenAI(api_key=openai_key, timeout=60.0)
+
+    plan_context = ""
+    if plan_path and os.path.exists(plan_path):
+        print(f"Reading Terraform plan from: {plan_path}...", flush=True)
+        with open(plan_path, "r", encoding="utf-8") as f:
+            plan_text = f.read()
+            print(f"Plan file loaded ({len(plan_text)} chars).", flush=True)
+            plan_context = f"\n\n### Terraform Plan Output:\n```text\n{plan_text}\n```\n"
+    else:
+        print("No plan file found or path provided. Proceeding with code review only.", flush=True)
+
+    full_prompt = f"Review this Terraform code:\n\n{tf_code_context}{plan_context}"
+
+    print("Sending prompt to OpenAI (gpt-4o-mini)...", flush=True)
+
+    try:
+        response = openai_client.beta.chat.completions.parse(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": full_prompt}
+            ],
+            response_format=ReviewResponse,
             temperature=0.2
         )
-    )
-    
-    return response.parsed
+        print("✅ OpenAI response received successfully!", flush=True)
+        return response.choices[0].message.parsed
+    except Exception as e:
+        print(f"❌ OpenAI API Call Failed: {e}", flush=True)
+        sys.exit(1)
