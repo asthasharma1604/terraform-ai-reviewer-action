@@ -4,7 +4,7 @@ import argparse
 from config import validate_environment, CACHE_FILE
 from models import ReviewResponse
 from analyzer import fetch_tf_code, analyze_with_openai
-from github import Github
+from github import Auth, Github
 import sys
 
 def run_analysis():
@@ -58,11 +58,7 @@ def post_inline_comments():
     repo_name = os.getenv("REPO_NAME")
     pr_number_str = os.getenv("PR_NUMBER")
 
-    if not github_token or not repo_name or not pr_number_str:
-        print("Missing GitHub variables. Cannot post inline comments.")
-        sys.exit(0)
-    
-    gh = Github(github_token)
+    gh = Github(auth=Auth.Token(github_token))
     repo = gh.get_repo(repo_name)
     pr = repo.get_pull(pr_number_str)
     commit_id = pr.head.sha # We attach comments to the latest commit
