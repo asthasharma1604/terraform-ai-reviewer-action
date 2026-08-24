@@ -1,92 +1,124 @@
 import os
 import json
-import argparse
 from config import validate_environment, CACHE_FILE
 from models import ReviewResponse
-from analyzer import fetch_tf_code, analyze_with_gemini
+from analyzer import analyze_with_openai, build_review_sections
+from github_services import fetch_tf_code, post_inline_comments, update_pr_status
+import sys
 
-def fetch_and_analyze():
-    # Checks cache first; if empty, fetches code and calls Gemini API.
-    if CACHE_FILE.exists():
-        with open(CACHE_FILE, "r", encoding="utf-8") as f:
-            return ReviewResponse(**json.load(f))
+# Runs the AI review once and saves its structured result to the cache.
+def run_analysis():
+    print("Starting AI Analysis phase...", flush=True)
+    # Calls the API and saves the raw JSON to a file. Runs ONLY ONCE.
+    repo, openai_key, pr, plan_path = validate_environment(require_openai=True)
 
-    # Validate Environment
-    github_token, gemini_key, pr_number, repo_name = validate_environment()
-
-    # Fetch Code
-    tf_code_context = fetch_tf_code(repo_name, pr_number, github_token)
+    tf_code_context = fetch_tf_code(repo, pr)
     if not tf_code_context:
-        print("No Terraform files modified. Skipping review.")
-        return None
+        print("No Terraform files modified in this commit. Skipping AI analysis.", flush=True)
+        empty_review = ReviewResponse(
+            summary="No Terraform files modified in this commit.",
+            dangerous_changes=[],
+            security_issues=[],
+            cost_issues=[],
+            architecture_suggestions=[],
+            fix_suggestions=[],
+        )
+        CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            f.write(empty_review.model_dump_json())
+        return
 
-    # Analyze with AI
-    review_data = analyze_with_gemini(tf_code_context, gemini_key)
+    # Call OpenAI API
+    review_data = analyze_with_openai(tf_code_context, plan_path, openai_key)
 
-    # Save to Cache
+    print(
+        "Note: "
+        f"{review_data.summary} ("
+        f"security={len(review_data.security_issues)}, "
+        f"cost={len(review_data.cost_issues)}, "
+        f"architecture={len(review_data.architecture_suggestions)}, "
+        f"dangerous={len(review_data.dangerous_changes)}, "
+        f"fixes={len(review_data.fix_suggestions)})",
+        flush=True,
+    )
+
+    print(f"Writing parsed analysis to cache file ({CACHE_FILE})...", flush=True)
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
         f.write(review_data.model_dump_json())
 
-    return review_data
+    print("AI Analysis complete! Data saved to cache.", flush=True)
+    return True
 
-def write_output(content: str):
-    # Outputs text to both console logs and the GitHub Step Summary.
-    print("\n=== \033[1mSTEP OUTPUT\033[0m ===\n")
+# Loads the cached review result, generating it when the cache is missing.
+def load_cached_data():
+    if not CACHE_FILE.exists():
+        print("No cached analysis found. Starting AI analysis...")
+        run_analysis()
+
+    if not CACHE_FILE.exists():
+        print("No Terraform files were found. Skipping review.")
+        sys.exit(0)
+
+    try:
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            return ReviewResponse.model_validate(json.load(f))
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        print(f"Unable to load cached analysis from {CACHE_FILE}: {e}")
+        sys.exit(1)
+
+# Prints review content and appends it to the GitHub Step Summary.
+def write_output(content: str, title: str):
     print(content)
-    print("\n===================\n")
     summary_file = os.getenv("GITHUB_STEP_SUMMARY")
     if summary_file:
         with open(summary_file, "a", encoding="utf-8") as f:
-            f.write(content + "\n\n")
+            f.write(f"<details>\n<summary>{title}</summary>\n{content}\n</details>\n")
 
+# Parses the selected action mode and produces the corresponding review output.
 def main():
-    parser = argparse.ArgumentParser(description="AI Reviewer Step Executor")
-    parser.add_argument("--mode", choices=["security", "cost", "fixes"], required=True)
-    args = parser.parse_args()
+    mode = sys.argv[1] if len(sys.argv) > 1 else "analyze"
 
-    # Get data (either from API or Cache)
-    review_data = fetch_and_analyze()
-    if not review_data:
+    # Generate the Data
+    if mode == "analyze":
+        run_analysis()
         return
 
-    # Format based on the requested step
-    if args.mode == "security":
-        md = f"## 🔒 Security Review\n\n**Summary:** {review_data.summary}\n\n"
-        if not review_data.security_issues:
-            md += "✅ *No major security vulnerabilities found!*\n"
-        else:
-            for issue in review_data.security_issues:
-                icon = "🔴" if issue.severity.upper() == "HIGH" else "🟠" if issue.severity.upper() == "MEDIUM" else "🟢"
-                md += f"- {icon} **[{issue.severity}] {issue.issue}** (📁 `{issue.file_name}` at **Line {issue.line_numbers}**)\n  - *Risk:* {issue.description}\n  - *Fix:* {issue.remediation}\n"
-        write_output(md)
+    # Extract the Data ---
+    review_data = load_cached_data()
 
-    elif args.mode == "cost":
-        md = "## 💰 Cost Optimization\n\n"
-        if not review_data.cost_issues:
-            md += "✅ *No obvious cost pitfalls detected!*\n"
-        else:
-            for cost in review_data.cost_issues:
-                md += f"- 💸 **[{cost.risk_level} Risk] Impact: {cost.estimated_impact}** (📁 `{cost.file_name}` at **Line {cost.line_numbers}**)\n  - *Why:* {cost.explanation}\n  - *Tip:* {cost.optimization_tip}\n"
-        write_output(md)
+    if mode == "dangerous":
+        review_sections = build_review_sections(review_data)
+        write_output(review_sections["Dangerous Terraform Changes"], "Dangerous Terraform Changes")
 
-    # elif args.mode == "fixes":
-    #     md = "## ✨ Suggested Fixes\n\n"
-    #     if review_data.recommended_tf_code:
-    #         md += f"```hcl\n{review_data.recommended_tf_code}\n```"
-    #     else:
-    #         md += "✅ *No immediate code replacements recommended!*"
-    #     write_output(md)
+    elif mode == "security":
+        review_sections = build_review_sections(review_data)
+        write_output(review_sections["Security Review"], "Security Review")
 
-    elif args.mode == "fixes":
-        md = "## ✨ Suggested Fixes\n\n"
-        if not review_data.fix_suggestions:
-            md += "✅ *No immediate code replacements recommended!*\n"
-        else:
-            for fix in review_data.fix_suggestions:
-                md += f"### 📁 `{fix.file_name}` (Lines {fix.line_numbers})\n"
-                md += f"**Why:** {fix.description}\n\n"
-                md += f"```hcl\n{fix.code}\n```\n\n"
-        write_output(md)
+    elif mode == "cost":
+        review_sections = build_review_sections(review_data)
+        write_output(review_sections["Cost Optimization"], "Cost Optimization")
+
+    elif mode == "architecture":
+        review_sections = build_review_sections(review_data)
+        write_output(review_sections["Architecture & Best Practices"], "Architecture & Best Practices")
+
+    elif mode == "fixes":
+        review_sections = build_review_sections(review_data)
+        write_output(review_sections["Suggested Fixes"], "Suggested Fixes")
+
+    elif mode == "inline":
+        # Resolve the GitHub PR context once and pass it into downstream helpers so
+        # inline comments and the final review verdict share the same repo/PR object.
+        repo, _, pr, _ = validate_environment(require_openai=False)
+        if not pr:
+            print("No pull request is associated with this push. Skipping inline comments.")
+            return
+
+        post_inline_comments(load_cached_data, repo, pr)
+        update_pr_status(review_data, repo, pr)
+    else:
+        raise ValueError(f"Unsupported mode: {mode}")
 
 if __name__ == "__main__":
     main()
