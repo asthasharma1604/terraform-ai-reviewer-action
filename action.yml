@@ -8,6 +8,9 @@ inputs:
   github_token:
     description: 'GitHub Token'
     required: true
+  plan_path:
+    description: 'Path to the Terraform plan file'
+    required: false
 
 runs:
   using: "composite"

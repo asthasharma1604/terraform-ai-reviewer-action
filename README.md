@@ -44,7 +44,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
 
 jobs:
   review:
@@ -68,11 +68,9 @@ The action writes review results to:
 - The workflow log.
 - The GitHub Actions step summary through `GITHUB_STEP_SUMMARY`.
 
-Results are reused between the security, cost, and fixes steps through the
-cache file `/tmp/review_output.json`, so a single workflow execution normally
-uses one OpenAI API response for all three review modes. Because this file is
-shared in the runner's temporary directory and is not keyed by pull request,
-clear it between runs when using a persistent self-hosted runner.
+Results are reused between the review steps through a cache file in the
+runner's temporary directory. The cache is keyed by the GitHub workflow run,
+so concurrent or later runs do not reuse another run's analysis.
 
 ## Development
 
@@ -98,4 +96,5 @@ export REPO_NAME=owner/repository
 python review.py --mode security
 ```
 
-Valid modes are `security`, `cost`, and `fixes`.
+Valid modes are `analyze`, `dangerous`, `security`, `cost`, `architecture`,
+`fixes`, and `inline`.

@@ -37,8 +37,8 @@ class FixSuggestion(BaseModel):
 
 class ReviewResponse(BaseModel):
     summary: str
+    dangerous_changes: list[DangerousChange]
     security_issues: list[SecurityFinding]
     cost_issues: list[CostFinding]
-    recommended_tf_code: str | None
     architecture_suggestions: list[ArchitectureFinding]
     fix_suggestions: list[FixSuggestion]

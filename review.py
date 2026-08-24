@@ -22,6 +22,7 @@ def run_analysis():
 
     print(f"Writing parsed analysis to cache file ({CACHE_FILE})...", flush=True)
     # Save to file so other steps can read it
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
         f.write(review_data.model_dump_json())
     
@@ -33,8 +34,12 @@ def load_cached_data():
         print("⚠️ No cached analysis found. Assuming no Terraform changes were made.")
         sys.exit(0) # Exit peacefully
 
-    with open(CACHE_FILE, "r", encoding="utf-8") as f:
-        return ReviewResponse(**json.load(f))
+    try:
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            return ReviewResponse(**json.load(f))
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        print(f"❌ Unable to load cached analysis from {CACHE_FILE}: {e}")
+        sys.exit(1)
 
 def write_output(content: str):
     # Outputs text to both console logs and the GitHub Step Summary.
@@ -59,7 +64,7 @@ def post_inline_comments():
     
     gh = Github(github_token)
     repo = gh.get_repo(repo_name)
-    pr = repo.get_pull(int(pr_number_str))
+    pr = repo.get_pull(pr_number_str)
     commit_id = pr.head.sha # We attach comments to the latest commit
 
     review_data = load_cached_data()
@@ -100,12 +105,13 @@ def post_inline_comments():
                 body=issue["body"],
                 commit_id=commit_id,
                 path=issue["path"],
-                line=issue["line"]
+                line=issue["line"],
+                side="RIGHT"
             )
             print(f"✅ Posted inline comment on {issue['path']} (Line {issue['line']})")
         except Exception as e:
             # GitHub blocks comments on lines that weren't modified in the PR diff.
-            print(f"⚠️ Skipped inline comment for {issue['path']} (Line {issue['line']}): Line is not part of the PR diff.")
+            print(f"⚠️ Skipped inline comment for {issue['path']} (Line {issue['line']}): {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="AI Reviewer Step Executor")

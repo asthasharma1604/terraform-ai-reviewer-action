@@ -51,10 +51,6 @@ def fetch_tf_code(repo_name, pr_number, token):
     return tf_code_context
 
 def analyze_with_openai(tf_code_context, plan_path, openai_key):
-    print("Initializing OpenAI client with 60s timeout...", flush=True)
-    # Sends the formatted code to OpenAI and returns structured JSON.
-    openai_client = OpenAI(api_key=openai_key, timeout=60.0)
-
     plan_context = ""
     if plan_path and os.path.exists(plan_path):
         print(f"Reading Terraform plan from: {plan_path}...", flush=True)
@@ -70,6 +66,9 @@ def analyze_with_openai(tf_code_context, plan_path, openai_key):
     print("Sending prompt to OpenAI (gpt-4o-mini)...", flush=True)
 
     try:
+        print("Initializing OpenAI client with 60s timeout...", flush=True)
+        # Sends the formatted code to OpenAI and returns structured JSON.
+        openai_client = OpenAI(api_key=openai_key, timeout=60.0)
         response = openai_client.beta.chat.completions.parse(
             model="gpt-4o",
             messages=[
@@ -79,8 +78,11 @@ def analyze_with_openai(tf_code_context, plan_path, openai_key):
             response_format=ReviewResponse,
             temperature=0.2
         )
+        parsed_response = response.choices[0].message.parsed
+        if parsed_response is None:
+            raise ValueError("OpenAI returned an empty structured response")
         print("✅ OpenAI response received successfully!", flush=True)
-        return response.choices[0].message.parsed
+        return parsed_response
     except Exception as e:
         print(f"❌ OpenAI API Call Failed: {e}", flush=True)
         sys.exit(1)
