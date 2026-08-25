@@ -16,11 +16,13 @@ If `terraform plan` output is provided, aggressively analyze it to detect DANGER
 - Permission changes or network exposure
 
 For code issues, specify `file_name` and `line_numbers`.
+For dangerous changes, specify `file_name` and `line_numbers` when the plan identifies a source location.
 Provide a clear summary, security risks, cost optimization tips, architecture best practices, dangerous plan changes, and code fixes.
 
 When summarizing the terraform plan, strictly classify actions using these emojis: Create (🟢), Update (🟡), Replace (🟠), and Destroy (🔴).
 """
 
+# Fetches changed Terraform files from a pull request and adds line numbers.
 def fetch_tf_code(repo_name, pr_number, token):
     print(f"Connecting to GitHub repo: {repo_name} (PR #{pr_number})...", flush=True)
     # Downloads modified Terraform files from the PR and injects line numbers.
@@ -50,6 +52,7 @@ def fetch_tf_code(repo_name, pr_number, token):
 
     return tf_code_context
 
+# Sends Terraform code and an optional plan to OpenAI for a structured review.
 def analyze_with_openai(tf_code_context, plan_path, openai_key):
     plan_context = ""
     if plan_path and os.path.exists(plan_path):
@@ -70,7 +73,7 @@ def analyze_with_openai(tf_code_context, plan_path, openai_key):
         # Sends the formatted code to OpenAI and returns structured JSON.
         openai_client = OpenAI(api_key=openai_key, timeout=60.0)
         response = openai_client.beta.chat.completions.parse(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": full_prompt}

@@ -7,20 +7,15 @@ cache_root = Path(os.getenv("RUNNER_TEMP", "/tmp")) / "terraform-ai-review"
 cache_id = os.getenv("GITHUB_RUN_ID", "local")
 CACHE_FILE = cache_root / f"review_output_{cache_id}.json"
 
-def validate_environment():
-    # Checks for required API keys, token etc. before executing any other code.    
+# Validates the GitHub settings and, when needed, the OpenAI settings for the action.
+def validate_environment(require_openai=True):
     github_token = os.getenv("GITHUB_TOKEN")
     openai_key = os.getenv("OPENAI_API_KEY")
     pr_number = os.getenv("PR_NUMBER")
     repo_name = os.getenv("REPO_NAME")
-    plan_path = os.getenv("PLAN_PATH")
 
     if not github_token:
         print("❌ CRITICAL ERROR: GITHUB_TOKEN is missing or empty!")
-        sys.exit(1)
-
-    if not openai_key:
-        print("❌ CRITICAL ERROR: OPENAI_API_KEY is missing or empty!")
         sys.exit(1)
 
     if not pr_number or not repo_name:
@@ -33,6 +28,12 @@ def validate_environment():
         print("❌ CRITICAL ERROR: PR_NUMBER must be an integer!")
         sys.exit(1)
 
+    if require_openai and not openai_key:
+        print("❌ CRITICAL ERROR: OPENAI_API_KEY is missing or empty!")
+        sys.exit(1)
+
+    plan_path = os.getenv("PLAN_PATH")
+    
     if not plan_path:
         print("⚠️ PLAN_PATH is missing. Proceeding with code review only.")
 

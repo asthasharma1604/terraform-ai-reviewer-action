@@ -6,11 +6,13 @@ from models import ReviewResponse
 from analyzer import fetch_tf_code, analyze_with_openai
 from github import Auth, Github
 import sys
+import concurrent.futures
 
+# Runs the AI review once and saves its structured result to the cache.
 def run_analysis():
     print("Starting AI Analysis phase...", flush=True)
     # Calls the API and saves the raw JSON to a file. Runs ONLY ONCE.
-    github_token, openai_key, pr_number, repo_name, plan_path = validate_environment()
+    github_token, openai_key, pr_number, repo_name, plan_path = validate_environment(require_openai=True)
 
     tf_code_context = fetch_tf_code(repo_name, pr_number, github_token)
     if not tf_code_context:
@@ -28,8 +30,8 @@ def run_analysis():
     
     print("✅ AI Analysis complete! Data saved to cache.", flush=True)
 
+# Loads the cached review result without calling the OpenAI API.
 def load_cached_data():
-    """Reads the JSON from the file without calling the API."""
     if not CACHE_FILE.exists():
         print("⚠️ No cached analysis found. Assuming no Terraform changes were made.")
         sys.exit(0) # Exit peacefully
@@ -41,8 +43,8 @@ def load_cached_data():
         print(f"❌ Unable to load cached analysis from {CACHE_FILE}: {e}")
         sys.exit(1)
 
+# Prints review content and appends it to the GitHub Step Summary.
 def write_output(content: str):
-    # Outputs text to both console logs and the GitHub Step Summary.
     print("\n=== \033[1mSTEP OUTPUT\033[0m ===\n")
     print(content)
     print("\n===================\n")
@@ -51,21 +53,19 @@ def write_output(content: str):
         with open(summary_file, "a", encoding="utf-8") as f:
             f.write(content + "\n\n")
 
+# Posts cached security, cost, and fix findings as PR inline comments.
 def post_inline_comments():
-    """Posts issues directly to the PR files as inline comments."""
-    # We need the GitHub Token again to post comments
-    github_token = os.getenv("GITHUB_TOKEN")
-    repo_name = os.getenv("REPO_NAME")
-    pr_number_str = os.getenv("PR_NUMBER")
+    github_token, _, pr_number, repo_name, _ = validate_environment(require_openai=False)
 
     gh = Github(auth=Auth.Token(github_token))
     repo = gh.get_repo(repo_name)
-    pr = repo.get_pull(pr_number_str)
+    pr = repo.get_pull(pr_number)
     commit_id = pr.head.sha # We attach comments to the latest commit
 
     review_data = load_cached_data()
 
     # Helper function to extract a single line number (e.g., "15-20" -> 20)
+    # Converts a reported line or line range to its final line number.
     def parse_line(line_str):
         try:
             return int(str(line_str).split('-')[-1].strip())
@@ -85,6 +85,17 @@ def post_inline_comments():
         body = f"### 💰 Cost Optimization ({cost.risk_level} Risk)\n**Impact: {cost.estimated_impact}**\n{cost.explanation}\n\n**Tip:** {cost.optimization_tip}"
         all_issues.append({"path": cost.file_name, "line": parse_line(cost.line_numbers), "body": body})
 
+    # Format Architecture Comments
+    for arch in review_data.architecture_suggestions:
+        body = f"### 🏗️ Architecture Suggestion\n**{arch.component}**\n{arch.observation}\n\n**Recommendation:** {arch.recommendation}"
+        all_issues.append({"path": arch.file_name, "line": parse_line(arch.line_numbers), "body": body})
+
+    # Format Dangerous Change Comments when the plan provides a source location.
+    for change in review_data.dangerous_changes:
+        if change.file_name and change.line_numbers:
+            body = f"### 🚨 Dangerous Terraform Change\n**{change.resource_name}** will be **{change.action}**.\n{change.why_it_matters}\n\n**Recommendation:** {change.recommendation}"
+            all_issues.append({"path": change.file_name, "line": parse_line(change.line_numbers), "body": body})
+
     # Format Code Fix Comments
     for fix in review_data.fix_suggestions:
         body = f"### ✨ Suggested Fix\n{fix.description}\n```hcl\n{fix.code}\n```"
@@ -92,23 +103,30 @@ def post_inline_comments():
 
     print(f"Preparing to post {len(all_issues)} inline comments...")
 
-    # Post them to GitHub!
-    for issue in all_issues:
-        if not issue["line"]:
-            continue
+    # Post them to GitHub! Posts one finding to GitHub and skips findings without a line number.
+    def post_single_comment(issue):
+        if not issue.get("line"):
+            return
         try:
             pr.create_review_comment(
                 body=issue["body"],
                 commit_id=commit_id,
                 path=issue["path"],
-                line=issue["line"],
-                side="RIGHT"
+                line=int(issue["line"])
             )
-            print(f"✅ Posted inline comment on {issue['path']} (Line {issue['line']})")
+            print(f"✅ Posted inline comment on {issue['path']} (Line {issue['line']})", flush=True)
         except Exception as e:
-            # GitHub blocks comments on lines that weren't modified in the PR diff.
-            print(f"⚠️ Skipped inline comment for {issue['path']} (Line {issue['line']}): {e}")
+            print(f"⚠️ Skipped {issue['path']} (Line {issue['line']}): {e}", flush=True)
 
+    print(f"🚀 Firing off {len(all_issues)} comments concurrently...", flush=True)
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        # Takes every item in 'all_issues' and pass it to 'post_single_comment' simultaneously."
+        executor.map(post_single_comment, all_issues)
+        
+    print("✅ Finished posting all concurrent comments!", flush=True)
+    
+# Parses the selected action mode and produces the corresponding review output.
 def main():
     parser = argparse.ArgumentParser(description="AI Reviewer Step Executor")
 

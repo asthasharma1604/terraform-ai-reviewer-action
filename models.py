@@ -1,24 +1,24 @@
 from pydantic import BaseModel
 
 class SecurityFinding(BaseModel):
-    file_name: str
-    line_numbers: str
+    file_name: str | None = None
+    line_numbers: str | None = None
     severity: str
     issue: str
     description: str
     remediation: str
 
 class CostFinding(BaseModel):
-    file_name: str
-    line_numbers: str
+    file_name: str | None = None
+    line_numbers: str | None = None
     risk_level: str
     estimated_impact: str
     explanation: str
     optimization_tip: str
 
 class ArchitectureFinding(BaseModel):
-    file_name: str
-    line_numbers: str
+    file_name: str | None = None
+    line_numbers: str | None = None
     component: str
     observation: str
     recommendation: str
@@ -28,10 +28,12 @@ class DangerousChange(BaseModel):
     action: str
     why_it_matters: str
     recommendation: str
+    file_name: str | None = None
+    line_numbers: str | None = None
 
 class FixSuggestion(BaseModel):
-    file_name: str
-    line_numbers: str
+    file_name: str | None = None
+    line_numbers: str | None = None
     description: str
     code: str
 
