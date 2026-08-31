@@ -22,6 +22,16 @@ def run_analysis():
     # Call OpenAI API
     review_data = analyze_with_openai(tf_code_context, plan_path, openai_key)
 
+    print(
+        "Findings generated: "
+        f"security={len(review_data.security_issues)}, "
+        f"cost={len(review_data.cost_issues)}, "
+        f"architecture={len(review_data.architecture_suggestions)}, "
+        f"dangerous={len(review_data.dangerous_changes)}, "
+        f"fixes={len(review_data.fix_suggestions)}",
+        flush=True,
+    )
+
     print(f"Writing parsed analysis to cache file ({CACHE_FILE})...", flush=True)
     # Save to file so other steps can read it
     CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
