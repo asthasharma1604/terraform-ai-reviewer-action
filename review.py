@@ -60,7 +60,7 @@ def post_inline_comments():
     gh = Github(auth=Auth.Token(github_token))
     repo = gh.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
-    commit_id = pr.head.sha # We attach comments to the latest commit
+    commit_id = repo.get_commit(pr.head.sha) # We attach comments to the latest commit
 
     review_data = load_cached_data()
 
@@ -110,9 +110,10 @@ def post_inline_comments():
         try:
             pr.create_review_comment(
                 body=issue["body"],
-                commit_id=commit_id,
+                commit=commit_id,
                 path=issue["path"],
-                line=int(issue["line"])
+                line=int(issue["line"]),
+                side="RIGHT"
             )
             print(f"✅ Posted inline comment on {issue['path']} (Line {issue['line']})", flush=True)
         except Exception as e:
