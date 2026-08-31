@@ -22,24 +22,34 @@ Provide a clear summary, security risks, cost optimization tips, architecture be
 When summarizing the terraform plan, strictly classify actions using these emojis: Create (🟢), Update (🟡), Replace (🟠), and Destroy (🔴).
 """
 
-# Fetches changed Terraform files from a pull request and adds line numbers.
+# Fetches changed Terraform files from a PR or pushed commit and adds line numbers.
 def fetch_tf_code(repo_name, pr_number, token):
-    print(f"Connecting to GitHub repo: {repo_name} (PR #{pr_number})...", flush=True)
-    # Downloads modified Terraform files from the PR and injects line numbers.
+    commit_sha = os.getenv("GITHUB_SHA")
+    print(f"Connecting to GitHub repo: {repo_name}...", flush=True)
     auth = Auth.Token(token)
     gh_client = Github(auth=auth)
 
     repo = gh_client.get_repo(repo_name)
-    pr = repo.get_pull(pr_number)
+    if pr_number:
+        pr = repo.get_pull(pr_number)
+        revision = pr.head.sha
+        files = list(pr.get_files())
+        source = f"PR #{pr_number}"
+    elif commit_sha:
+        revision = commit_sha
+        files = list(repo.get_commit(commit_sha).files)
+        source = f"commit {commit_sha}"
+    else:
+        print("❌ Neither PR_NUMBER nor GITHUB_SHA is available.", flush=True)
+        return ""
 
     tf_code_context = ""
-    files = list(pr.get_files())
-    print(f"Found {len(files)} total changed file(s) in PR.", flush=True)
+    print(f"Found {len(files)} total changed file(s) in {source}.", flush=True)
 
     for file in files:
         if file.filename.endswith(".tf") and file.status != "removed":
             try:
-                content_file = repo.get_contents(file.filename, ref=pr.head.sha)
+                content_file = repo.get_contents(file.filename, ref=revision)
                 raw_content = content_file.decoded_content.decode("utf-8")
                 
                 # Inject line numbers

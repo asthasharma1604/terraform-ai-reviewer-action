@@ -16,7 +16,7 @@ def run_analysis():
 
     tf_code_context = fetch_tf_code(repo_name, pr_number, github_token)
     if not tf_code_context:
-        print("No Terraform files modified in this PR. Skipping AI analysis.", flush=True)
+        print("No Terraform files modified in this commit. Skipping AI analysis.", flush=True)
         return
 
     # Call OpenAI API
@@ -56,6 +56,10 @@ def write_output(content: str):
 # Posts cached security, cost, and fix findings as PR inline comments.
 def post_inline_comments():
     github_token, _, pr_number, repo_name, _ = validate_environment(require_openai=False)
+
+    if not pr_number:
+        print("No pull request is associated with this push. Skipping inline comments.")
+        return
 
     gh = Github(auth=Auth.Token(github_token))
     repo = gh.get_repo(repo_name)

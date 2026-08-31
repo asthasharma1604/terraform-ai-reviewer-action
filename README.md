@@ -1,9 +1,9 @@
 # Terraform AI Reviewer Action
 
-A GitHub Action that reviews Terraform pull requests with OpenAI. It
-fetches the current contents of changed Terraform files, adds line numbers,
-and reports security findings, cost optimization opportunities, and suggested
-HCL fixes in the GitHub Actions step summary.
+A GitHub Action that reviews Terraform changes with OpenAI. It fetches the
+current contents of changed Terraform files, adds line numbers, and reports
+security findings, cost optimization opportunities, and suggested HCL fixes in
+the GitHub Actions step summary.
 
 ## What It Reviews
 
@@ -16,20 +16,21 @@ The action runs three review passes:
 - **Fixes**: provides suggested Terraform code changes for the reported
   findings.
 
-Only changed `.tf` files that are not removed from the pull request are
-analyzed. The action reviews their complete contents at the pull request head,
-not only the diff. If a pull request does not change Terraform files, the
-action skips the review.
+Only changed `.tf` files that are not removed are analyzed. For pull request
+events, the action reviews their complete contents at the pull request head;
+for push events, it reviews the complete contents at the pushed commit. If the
+change does not include Terraform files, the action skips the review.
 
 ## Prerequisites
 
-- A GitHub repository with pull requests enabled.
+- A GitHub repository.
 - An OpenAI API key.
 - Python 3.10 (configured automatically by the action).
 
-The action uses the GitHub token to read pull request files through the GitHub
-API. No checkout step is required. The workflow must grant the action
-permission to read repository contents and pull requests.
+The action uses the GitHub token to read changed files through the GitHub API.
+No checkout step is required. The workflow must grant the action permission to
+read repository contents. Add `pull-requests: write` when using a
+`pull_request` trigger and posting inline comments.
 
 ## Usage
 
@@ -39,6 +40,8 @@ Create a workflow such as `.github/workflows/terraform-review.yml`:
 name: Terraform AI Review
 
 on:
+  push:
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -58,8 +61,9 @@ jobs:
 ```
 
 Both `openai_api_key` and `github_token` are required inputs. The action maps
-these inputs to `OPENAI_API_KEY` and `GITHUB_TOKEN`, and populates `PR_NUMBER`
-and `REPO_NAME` automatically from the GitHub context for pull request events.
+these inputs to `OPENAI_API_KEY` and `GITHUB_TOKEN`. It uses `PR_NUMBER` for
+pull request events and `GITHUB_SHA` for push events. Inline comments are
+skipped for pushes because there is no pull request review to attach them to.
 
 ## Outputs
 

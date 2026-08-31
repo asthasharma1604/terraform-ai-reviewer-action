@@ -18,15 +18,16 @@ def validate_environment(require_openai=True):
         print("❌ CRITICAL ERROR: GITHUB_TOKEN is missing or empty!")
         sys.exit(1)
 
-    if not pr_number or not repo_name:
-        print("⚠️ Not running on a Pull Request. Missing PR_NUMBER or REPO_NAME.")
+    if not repo_name:
+        print("⚠️ Repository name is missing; cannot review the commit.")
         sys.exit(0)
 
-    try:
-        pr_number_value = int(pr_number)
-    except ValueError:
-        print("❌ CRITICAL ERROR: PR_NUMBER must be an integer!")
-        sys.exit(1)
+    if pr_number:
+        try:
+            pr_number = int(pr_number)
+        except ValueError:
+            print("❌ CRITICAL ERROR: PR_NUMBER must be an integer!")
+            sys.exit(1)
 
     if require_openai and not openai_key:
         print("❌ CRITICAL ERROR: OPENAI_API_KEY is missing or empty!")
@@ -37,4 +38,4 @@ def validate_environment(require_openai=True):
     if not plan_path:
         print("⚠️ PLAN_PATH is missing. Proceeding with code review only.")
 
-    return github_token, openai_key, pr_number_value, repo_name, plan_path
+    return github_token, openai_key, pr_number, repo_name, plan_path
