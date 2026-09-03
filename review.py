@@ -40,11 +40,15 @@ def run_analysis():
 
     print("AI Analysis complete! Data saved to cache.", flush=True)
 
-# Loads the cached review result without calling the OpenAI API.
+# Loads the cached review result, generating it when the cache is missing.
 def load_cached_data():
     if not CACHE_FILE.exists():
-        print("No cached analysis found. Assuming no Terraform changes were made.")
-        sys.exit(0) # Exit peacefully
+        print("No cached analysis found. Starting AI analysis...")
+        run_analysis()
+
+    if not CACHE_FILE.exists():
+        print("No Terraform files were found. Skipping review.")
+        sys.exit(0)
 
     try:
         with open(CACHE_FILE, "r", encoding="utf-8") as f:
@@ -167,6 +171,7 @@ def main():
                 dangerous_summary += f"**`{change.resource_name}`** will be **{change.action}**.\n"
                 dangerous_summary += f"- **Why this matters:** {change.why_it_matters}\n"
                 dangerous_summary += f"- **Recommendation:** {change.recommendation}\n\n"
+        print("\n\n\n\n")
         write_output(dangerous_summary, "**Dangerous Terraform Changes**")
 
     elif mode == "security":
@@ -178,6 +183,7 @@ def main():
                 severity_level = issue.severity.upper()
                 icon = "High" if severity_level == "HIGH" else "Medium" if severity_level == "MEDIUM" else "Low"
                 security_summary += f"- **[{issue.severity}] {issue.issue}** ({issue.file_name} at **Line {issue.line_numbers}**)\n  - *Risk:* {issue.description}\n  - *Fix:* {issue.remediation}\n"
+        print("\n\n\n\n")
         write_output(security_summary, "**Security Review**")
 
     elif mode == "cost":
@@ -187,6 +193,7 @@ def main():
         else:
             for cost in review_data.cost_issues:
                 cost_summary += f"- **[{cost.risk_level} Risk] Impact: {cost.estimated_impact}** ({cost.file_name} at **Line {cost.line_numbers}**)\n  - *Why:* {cost.explanation}\n  - *Tip:* {cost.optimization_tip}\n"
+        print("\n\n\n\n")
         write_output(cost_summary, "**Cost Optimization**")
 
     elif mode == "architecture":
@@ -198,6 +205,7 @@ def main():
                 architecture_summary += f"### {arch.component} ({arch.file_name} at Lines {arch.line_numbers})\n"
                 architecture_summary += f"- **Observation:** {arch.observation}\n"
                 architecture_summary += f"- **Recommendation:** {arch.recommendation}\n\n"
+        print("\n\n\n\n")
         write_output(architecture_summary, "**Architecture & Best Practices**")
 
     elif mode == "fixes":
@@ -209,6 +217,7 @@ def main():
                 fixes_summary += f"### {fix.file_name} (Lines {fix.line_numbers})\n"
                 fixes_summary += f"**Why:** {fix.description}\n\n"
                 fixes_summary += f"```hcl\n{fix.code}\n```\n\n"
+        print("\n\n\n\n")
         write_output(fixes_summary, "**Suggested Fixes**")
 
     elif mode == "inline":
