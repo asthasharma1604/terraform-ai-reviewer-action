@@ -55,7 +55,7 @@ def load_cached_data():
 
 # Prints review content and appends it to the GitHub Step Summary.
 def write_output(content: str, title: str):
-    print(content)
+    print(f"\n\n{content}\n\n")
     summary_file = os.getenv("GITHUB_STEP_SUMMARY")
     if summary_file:
         with open(summary_file, "a", encoding="utf-8") as f:
