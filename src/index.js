@@ -4,13 +4,13 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_MODES = [
-  { mode: 'analyze', title: 'Run AI Analysis' },
-  { mode: 'dangerous', title: 'Dangerous Changes' },
-  { mode: 'security', title: 'Security Review' },
-  { mode: 'cost', title: 'Cost Optimization' },
-  { mode: 'architecture', title: 'Architecture Suggestions' },
-  { mode: 'fixes', title: 'Fix Suggestions' },
-  { mode: 'inline', title: 'Post Inline PR Comments' }
+  { mode: 'analyze', title: '**Run AI Analysis**' },
+  { mode: 'dangerous', title: '**Dangerous Changes**' },
+  { mode: 'security', title: '**Security Review**' },
+  { mode: 'cost', title: '**Cost Optimization**' },
+  { mode: 'architecture', title: '**Architecture Suggestions**' },
+  { mode: 'fixes', title: '**Fix Suggestions**' },
+  { mode: 'inline', title: '**Post Inline PR Comments**' }
 ];
 
 function run() {

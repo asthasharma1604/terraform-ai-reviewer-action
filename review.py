@@ -160,7 +160,7 @@ def main():
     review_data = load_cached_data()
 
     if mode == "dangerous":
-        dangerous_summary = "## Dangerous Terraform Changes\n\n"
+        dangerous_summary = "## **Dangerous Terraform Changes**\n\n"
         if not review_data.dangerous_changes:
             dangerous_summary += "*Plan looks clean! No destructive changes or replacements detected.*\n"
         else:
@@ -169,10 +169,10 @@ def main():
                 dangerous_summary += f"**`{change.resource_name}`** will be **{change.action}**.\n"
                 dangerous_summary += f"- **Why this matters:** {change.why_it_matters}\n"
                 dangerous_summary += f"- **Recommendation:** {change.recommendation}\n\n"
-        write_output(dangerous_summary, "Dangerous Terraform Changes")
+        write_output(dangerous_summary, "**Dangerous Terraform Changes**")
 
     elif mode == "security":
-        security_summary = f"## Security Review\n\n**Summary:** {review_data.summary}\n\n"
+        security_summary = f"## **Security Review**\n\n**Summary:** {review_data.summary}\n\n"
         if not review_data.security_issues:
             security_summary += "*No major security vulnerabilities found!*\n"
         else:
@@ -180,19 +180,19 @@ def main():
                 severity_level = issue.severity.upper()
                 icon = "High" if severity_level == "HIGH" else "Medium" if severity_level == "MEDIUM" else "Low"
                 security_summary += f"- **[{issue.severity}] {issue.issue}** ({issue.file_name} at **Line {issue.line_numbers}**)\n  - *Risk:* {issue.description}\n  - *Fix:* {issue.remediation}\n"
-        write_output(security_summary, "Security Review")
+        write_output(security_summary, "**Security Review**")
 
     elif mode == "cost":
-        cost_summary = "## Cost Optimization\n\n"
+        cost_summary = "## **Cost Optimization**\n\n"
         if not review_data.cost_issues:
             cost_summary += "*No obvious cost pitfalls detected!*\n"
         else:
             for cost in review_data.cost_issues:
                 cost_summary += f"- **[{cost.risk_level} Risk] Impact: {cost.estimated_impact}** ({cost.file_name} at **Line {cost.line_numbers}**)\n  - *Why:* {cost.explanation}\n  - *Tip:* {cost.optimization_tip}\n"
-        write_output(cost_summary, "Cost Optimization")
+        write_output(cost_summary, "**Cost Optimization**")
 
     elif mode == "architecture":
-        architecture_summary = "## Architecture & Best Practices\n\n"
+        architecture_summary = "## **Architecture & Best Practices**\n\n"
         if not review_data.architecture_suggestions:
             architecture_summary += "*Architecture looks solid! No major improvements suggested.*\n"
         else:
@@ -200,10 +200,10 @@ def main():
                 architecture_summary += f"### {arch.component} ({arch.file_name} at Lines {arch.line_numbers})\n"
                 architecture_summary += f"- **Observation:** {arch.observation}\n"
                 architecture_summary += f"- **Recommendation:** {arch.recommendation}\n\n"
-        write_output(architecture_summary, "Architecture & Best Practices")
+        write_output(architecture_summary, "**Architecture & Best Practices**")
 
     elif mode == "fixes":
-        fixes_summary = "## Suggested Fixes\n\n"
+        fixes_summary = "## **Suggested Fixes**\n\n"
         if not review_data.fix_suggestions:
             fixes_summary += "*No immediate code replacements recommended!*\n"
         else:
@@ -211,7 +211,7 @@ def main():
                 fixes_summary += f"### {fix.file_name} (Lines {fix.line_numbers})\n"
                 fixes_summary += f"**Why:** {fix.description}\n\n"
                 fixes_summary += f"```hcl\n{fix.code}\n```\n\n"
-        write_output(fixes_summary, "Suggested Fixes")
+        write_output(fixes_summary, "**Suggested Fixes**")
 
     elif mode == "inline":
         post_inline_comments()

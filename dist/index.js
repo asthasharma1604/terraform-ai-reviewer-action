@@ -27561,13 +27561,13 @@ const fs = __nccwpck_require__(9896);
 const path = __nccwpck_require__(6928);
 
 const DEFAULT_MODES = [
-  { mode: 'analyze', title: 'Run AI Analysis' },
-  { mode: 'dangerous', title: 'Dangerous Changes' },
-  { mode: 'security', title: 'Security Review' },
-  { mode: 'cost', title: 'Cost Optimization' },
-  { mode: 'architecture', title: 'Architecture Suggestions' },
-  { mode: 'fixes', title: 'Fix Suggestions' },
-  { mode: 'inline', title: 'Post Inline PR Comments' }
+  { mode: 'analyze', title: '**Run AI Analysis**' },
+  { mode: 'dangerous', title: '**Dangerous Changes**' },
+  { mode: 'security', title: '**Security Review**' },
+  { mode: 'cost', title: '**Cost Optimization**' },
+  { mode: 'architecture', title: '**Architecture Suggestions**' },
+  { mode: 'fixes', title: '**Fix Suggestions**' },
+  { mode: 'inline', title: '**Post Inline PR Comments**' }
 ];
 
 function run() {
