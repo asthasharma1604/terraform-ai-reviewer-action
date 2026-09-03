@@ -54,14 +54,14 @@ def load_cached_data():
         sys.exit(1)
 
 # Prints review content and appends it to the GitHub Step Summary.
-def write_output(content: str):
+def write_output(content: str, title: str):
     print("\n=== \033[1mSTEP OUTPUT\033[0m ===\n")
     print(content)
     print("\n===================\n")
     summary_file = os.getenv("GITHUB_STEP_SUMMARY")
     if summary_file:
         with open(summary_file, "a", encoding="utf-8") as f:
-            f.write(content + "\n\n")
+            f.write(f"<details>\n<summary>{title}</summary>\n\n{content}\n</details>\n\n")
 
 # Posts cached security, cost, and fix findings as PR inline comments.
 def post_inline_comments():
@@ -169,7 +169,7 @@ def main():
                 dangerous_summary += f"**`{change.resource_name}`** will be **{change.action}**.\n"
                 dangerous_summary += f"- **Why this matters:** {change.why_it_matters}\n"
                 dangerous_summary += f"- **Recommendation:** {change.recommendation}\n\n"
-        write_output(dangerous_summary)
+        write_output(dangerous_summary, "Dangerous Terraform Changes")
 
     elif mode == "security":
         security_summary = f"## Security Review\n\n**Summary:** {review_data.summary}\n\n"
@@ -180,7 +180,7 @@ def main():
                 severity_level = issue.severity.upper()
                 icon = "High" if severity_level == "HIGH" else "Medium" if severity_level == "MEDIUM" else "Low"
                 security_summary += f"- **[{issue.severity}] {issue.issue}** ({issue.file_name} at **Line {issue.line_numbers}**)\n  - *Risk:* {issue.description}\n  - *Fix:* {issue.remediation}\n"
-        write_output(security_summary)
+        write_output(security_summary, "Security Review")
 
     elif mode == "cost":
         cost_summary = "## Cost Optimization\n\n"
@@ -189,7 +189,7 @@ def main():
         else:
             for cost in review_data.cost_issues:
                 cost_summary += f"- **[{cost.risk_level} Risk] Impact: {cost.estimated_impact}** ({cost.file_name} at **Line {cost.line_numbers}**)\n  - *Why:* {cost.explanation}\n  - *Tip:* {cost.optimization_tip}\n"
-        write_output(cost_summary)
+        write_output(cost_summary, "Cost Optimization")
 
     elif mode == "architecture":
         architecture_summary = "## Architecture & Best Practices\n\n"
@@ -200,7 +200,7 @@ def main():
                 architecture_summary += f"### {arch.component} ({arch.file_name} at Lines {arch.line_numbers})\n"
                 architecture_summary += f"- **Observation:** {arch.observation}\n"
                 architecture_summary += f"- **Recommendation:** {arch.recommendation}\n\n"
-        write_output(architecture_summary)
+        write_output(architecture_summary, "Architecture & Best Practices")
 
     elif mode == "fixes":
         fixes_summary = "## Suggested Fixes\n\n"
@@ -211,7 +211,7 @@ def main():
                 fixes_summary += f"### {fix.file_name} (Lines {fix.line_numbers})\n"
                 fixes_summary += f"**Why:** {fix.description}\n\n"
                 fixes_summary += f"```hcl\n{fix.code}\n```\n\n"
-        write_output(fixes_summary)
+        write_output(fixes_summary, "Suggested Fixes")
 
     elif mode == "inline":
         post_inline_comments()
