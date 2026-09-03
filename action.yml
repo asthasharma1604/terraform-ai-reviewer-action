@@ -24,68 +24,81 @@ runs:
       run: pip install PyGithub openai pydantic
       shell: bash
 
-    - name: Run AI Analysis
-      shell: bash
+    - name: Debug GitHub Token
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
       run: |
-        export OPENAI_API_KEY="${{ inputs.openai_api_key }}"
-        export GITHUB_TOKEN="${{ inputs.github_token }}"
-        export PR_NUMBER="${{ github.event.pull_request.number }}"
-        export REPO_NAME="${{ github.repository }}"
-        export GITHUB_SHA="${{ github.sha }}"
-        export PLAN_PATH="${{ inputs.plan_path }}"
-        python -u "${{ github.action_path }}/review.py" --mode analyze
+        if [ -z "$GITHUB_TOKEN" ]; then
+          echo "GITHUB_TOKEN is EMPTY"
+          exit 1
+        else
+          echo "GITHUB_TOKEN is available"
+          echo "Token length: ${#GITHUB_TOKEN}"
+        fi
+      shell: bash
+
+    - name: Run AI Analysis
+      env:
+        OPENAI_API_KEY: ${{ inputs.openai_api_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO_NAME: ${{ github.repository }}
+        GITHUB_SHA: ${{ github.sha }}
+        PLAN_PATH: ${{ inputs.plan_path }}
+      run: python -u ${{ github.action_path }}/review.py --mode analyze
+      shell: bash
 
     - name: Dangerous Changes
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO_NAME: ${{ github.repository }}
+        GITHUB_SHA: ${{ github.sha }}
+      run: python -u ${{ github.action_path }}/review.py --mode dangerous
       shell: bash
-      run: |
-        export GITHUB_TOKEN="${{ inputs.github_token }}"
-        export PR_NUMBER="${{ github.event.pull_request.number }}"
-        export REPO_NAME="${{ github.repository }}"
-        export GITHUB_SHA="${{ github.sha }}"
-        python -u "${{ github.action_path }}/review.py" --mode dangerous
 
     - name: Security Review
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO_NAME: ${{ github.repository }}
+        GITHUB_SHA: ${{ github.sha }}
+      run: python -u ${{ github.action_path }}/review.py --mode security
       shell: bash
-      run: |
-        export GITHUB_TOKEN="${{ inputs.github_token }}"
-        export PR_NUMBER="${{ github.event.pull_request.number }}"
-        export REPO_NAME="${{ github.repository }}"
-        export GITHUB_SHA="${{ github.sha }}"
-        python -u "${{ github.action_path }}/review.py" --mode security
 
     - name: Cost Optimization
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO_NAME: ${{ github.repository }}
+        GITHUB_SHA: ${{ github.sha }}
+      run: python -u ${{ github.action_path }}/review.py --mode cost
       shell: bash
-      run: |
-        export GITHUB_TOKEN="${{ inputs.github_token }}"
-        export PR_NUMBER="${{ github.event.pull_request.number }}"
-        export REPO_NAME="${{ github.repository }}"
-        export GITHUB_SHA="${{ github.sha }}"
-        python -u "${{ github.action_path }}/review.py" --mode cost
 
-    - name: Architecture Suggestions
+    - name: 🏗️ Architecture Suggestions
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO_NAME: ${{ github.repository }}
+        GITHUB_SHA: ${{ github.sha }}
+      run: python -u ${{ github.action_path }}/review.py --mode architecture
       shell: bash
-      run: |
-        export GITHUB_TOKEN="${{ inputs.github_token }}"
-        export PR_NUMBER="${{ github.event.pull_request.number }}"
-        export REPO_NAME="${{ github.repository }}"
-        export GITHUB_SHA="${{ github.sha }}"
-        python -u "${{ github.action_path }}/review.py" --mode architecture
 
-    - name: Fix Suggestions
+    - name: ✨ Fix Suggestions
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO_NAME: ${{ github.repository }}
+        GITHUB_SHA: ${{ github.sha }}
+      run: python -u ${{ github.action_path }}/review.py --mode fixes
       shell: bash
-      run: |
-        export GITHUB_TOKEN="${{ inputs.github_token }}"
-        export PR_NUMBER="${{ github.event.pull_request.number }}"
-        export REPO_NAME="${{ github.repository }}"
-        export GITHUB_SHA="${{ github.sha }}"
-        python -u "${{ github.action_path }}/review.py" --mode fixes
-
-    - name: Post Inline PR Comments
+    
+    - name: 💬 Post Inline PR Comments
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }} # It needs this to write comments!
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO_NAME: ${{ github.repository }}
+        GITHUB_SHA: ${{ github.sha }}
+        PLAN_PATH: ${{ inputs.plan_path }}
+      run: python -u ${{ github.action_path }}/review.py --mode inline
       shell: bash
-      run: |
-        export GITHUB_TOKEN="${{ inputs.github_token }}"
-        export PR_NUMBER="${{ github.event.pull_request.number }}"
-        export REPO_NAME="${{ github.repository }}"
-        export GITHUB_SHA="${{ github.sha }}"
-        export PLAN_PATH="${{ inputs.plan_path }}"
-        python -u "${{ github.action_path }}/review.py" --mode inline
