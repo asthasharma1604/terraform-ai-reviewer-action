@@ -75,7 +75,7 @@ runs:
       run: python -u ${{ github.action_path }}/review.py --mode cost
       shell: bash
 
-    - name: 🏗️ Architecture Suggestions
+    - name: Architecture Suggestions
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -84,7 +84,7 @@ runs:
       run: python -u ${{ github.action_path }}/review.py --mode architecture
       shell: bash
 
-    - name: ✨ Fix Suggestions
+    - name: Fix Suggestions
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -93,9 +93,9 @@ runs:
       run: python -u ${{ github.action_path }}/review.py --mode fixes
       shell: bash
     
-    - name: 💬 Post Inline PR Comments
+    - name: Post Inline PR Comments
       env:
-        GITHUB_TOKEN: ${{ inputs.github_token }} # It needs this to write comments!
+        GITHUB_TOKEN: ${{ inputs.github_token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         REPO_NAME: ${{ github.repository }}
         GITHUB_SHA: ${{ github.sha }}
