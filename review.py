@@ -37,20 +37,20 @@ def run_analysis():
     CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
         f.write(review_data.model_dump_json())
-    
-    print("✅ AI Analysis complete! Data saved to cache.", flush=True)
+
+    print("AI Analysis complete! Data saved to cache.", flush=True)
 
 # Loads the cached review result without calling the OpenAI API.
 def load_cached_data():
     if not CACHE_FILE.exists():
-        print("⚠️ No cached analysis found. Assuming no Terraform changes were made.")
+        print("No cached analysis found. Assuming no Terraform changes were made.")
         sys.exit(0) # Exit peacefully
 
     try:
         with open(CACHE_FILE, "r", encoding="utf-8") as f:
             return ReviewResponse(**json.load(f))
     except (OSError, json.JSONDecodeError, ValueError) as e:
-        print(f"❌ Unable to load cached analysis from {CACHE_FILE}: {e}")
+        print(f"Unable to load cached analysis from {CACHE_FILE}: {e}")
         sys.exit(1)
 
 # Prints review content and appends it to the GitHub Step Summary.
@@ -90,29 +90,30 @@ def post_inline_comments():
 
     # Format Security Comments
     for security_issue in review_data.security_issues:
-        security_icon = "🔴" if security_issue.severity.upper() == "HIGH" else "🟠" if security_issue.severity.upper() == "MEDIUM" else "🟢"
-        security_comment_body = f"### 🔒 Security Issue ({security_icon} {security_issue.severity})\n**{security_issue.issue}**\n{security_issue.description}\n\n**Remediation:** {security_issue.remediation}"
+        severity_level = security_issue.severity.upper()
+        severity_label = "High" if severity_level == "HIGH" else "Medium" if severity_level == "MEDIUM" else "Low"
+        security_comment_body = f"### Security Issue ({severity_label} {security_issue.severity})\n**{security_issue.issue}**\n{security_issue.description}\n\n**Remediation:** {security_issue.remediation}"
         all_issues.append({"path": security_issue.file_name, "line": parse_line(security_issue.line_numbers), "body": security_comment_body})
 
     # Format Cost Comments
     for cost_issue in review_data.cost_issues:
-        cost_comment_body = f"### 💰 Cost Optimization ({cost_issue.risk_level} Risk)\n**Impact: {cost_issue.estimated_impact}**\n{cost_issue.explanation}\n\n**Tip:** {cost_issue.optimization_tip}"
+        cost_comment_body = f"### Cost Optimization ({cost_issue.risk_level} Risk)\n**Impact: {cost_issue.estimated_impact}**\n{cost_issue.explanation}\n\n**Tip:** {cost_issue.optimization_tip}"
         all_issues.append({"path": cost_issue.file_name, "line": parse_line(cost_issue.line_numbers), "body": cost_comment_body})
 
     # Format Architecture Comments
     for architecture_issue in review_data.architecture_suggestions:
-        architecture_comment_body = f"### 🏗️ Architecture Suggestion\n**{architecture_issue.component}**\n{architecture_issue.observation}\n\n**Recommendation:** {architecture_issue.recommendation}"
+        architecture_comment_body = f"### Architecture Suggestion\n**{architecture_issue.component}**\n{architecture_issue.observation}\n\n**Recommendation:** {architecture_issue.recommendation}"
         all_issues.append({"path": architecture_issue.file_name, "line": parse_line(architecture_issue.line_numbers), "body": architecture_comment_body})
 
     # Format Dangerous Change Comments when the plan provides a source location.
     for dangerous_change in review_data.dangerous_changes:
         if dangerous_change.file_name and dangerous_change.line_numbers:
-            dangerous_change_body = f"### 🚨 Dangerous Terraform Change\n**{dangerous_change.resource_name}** will be **{dangerous_change.action}**.\n{dangerous_change.why_it_matters}\n\n**Recommendation:** {dangerous_change.recommendation}"
+            dangerous_change_body = f"### Dangerous Terraform Change\n**{dangerous_change.resource_name}** will be **{dangerous_change.action}**.\n{dangerous_change.why_it_matters}\n\n**Recommendation:** {dangerous_change.recommendation}"
             all_issues.append({"path": dangerous_change.file_name, "line": parse_line(dangerous_change.line_numbers), "body": dangerous_change_body})
 
     # Format Code Fix Comments
     for fix_suggestion in review_data.fix_suggestions:
-        fix_comment_body = f"### ✨ Suggested Fix\n{fix_suggestion.description}\n```hcl\n{fix_suggestion.code}\n```"
+        fix_comment_body = f"### Suggested Fix\n{fix_suggestion.description}\n```hcl\n{fix_suggestion.code}\n```"
         all_issues.append({"path": fix_suggestion.file_name, "line": parse_line(fix_suggestion.line_numbers), "body": fix_comment_body})
 
     print(f"Preparing to post {len(all_issues)} inline comments...")
@@ -129,18 +130,18 @@ def post_inline_comments():
                 line=int(comment_issue["line"]),
                 side="RIGHT"
             )
-            print(f"✅ Posted inline comment on {comment_issue['path']} (Line {comment_issue['line']})", flush=True)
+            print(f"Posted inline comment on {comment_issue['path']} (Line {comment_issue['line']})", flush=True)
         except Exception as e:
-            print(f"⚠️ Skipped {comment_issue['path']} (Line {comment_issue['line']}): {e}", flush=True)
+            print(f"Skipped {comment_issue['path']} (Line {comment_issue['line']}): {e}", flush=True)
 
-    print(f"🚀 Firing off {len(all_issues)} comments concurrently...", flush=True)
-    
+    print(f"Firing off {len(all_issues)} comments concurrently...", flush=True)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         # Takes every item in 'all_issues' and pass it to 'post_single_comment' simultaneously."
         executor.map(post_single_comment, all_issues)
-        
-    print("✅ Finished posting all concurrent comments!", flush=True)
-    
+
+    print("Finished posting all concurrent comments!", flush=True)
+
 # Parses the selected action mode and produces the corresponding review output.
 def main():
     parser = argparse.ArgumentParser(description="AI Reviewer Step Executor")
@@ -157,54 +158,55 @@ def main():
     review_data = load_cached_data()
 
     if args.mode == "dangerous":
-        dangerous_summary = "## 🚨 Dangerous Terraform Changes\n\n"
+        dangerous_summary = "## Dangerous Terraform Changes\n\n"
         if not review_data.dangerous_changes:
-            dangerous_summary += "✅ *Plan looks clean! No destructive changes or replacements detected.*\n"
+            dangerous_summary += "*Plan looks clean! No destructive changes or replacements detected.*\n"
         else:
             for change in review_data.dangerous_changes:
-                dangerous_summary += f"### 🔴 Potentially destructive change\n"
+                dangerous_summary += f"### Potentially destructive change\n"
                 dangerous_summary += f"**`{change.resource_name}`** will be **{change.action}**.\n"
                 dangerous_summary += f"- **Why this matters:** {change.why_it_matters}\n"
                 dangerous_summary += f"- **Recommendation:** {change.recommendation}\n\n"
         write_output(dangerous_summary)
 
     elif args.mode == "security":
-        security_summary = f"## 🔒 Security Review\n\n**Summary:** {review_data.summary}\n\n"
+        security_summary = f"## Security Review\n\n**Summary:** {review_data.summary}\n\n"
         if not review_data.security_issues:
-            security_summary += "✅ *No major security vulnerabilities found!*\n"
+            security_summary += "*No major security vulnerabilities found!*\n"
         else:
             for issue in review_data.security_issues:
-                icon = "🔴" if issue.severity.upper() == "HIGH" else "🟠" if issue.severity.upper() == "MEDIUM" else "🟢"
-                security_summary += f"- {icon} **[{issue.severity}] {issue.issue}** (📁 `{issue.file_name}` at **Line {issue.line_numbers}**)\n  - *Risk:* {issue.description}\n  - *Fix:* {issue.remediation}\n"
+                severity_level = issue.severity.upper()
+                icon = "High" if severity_level == "HIGH" else "Medium" if severity_level == "MEDIUM" else "Low"
+                security_summary += f"- **[{issue.severity}] {issue.issue}** ({issue.file_name} at **Line {issue.line_numbers}**)\n  - *Risk:* {issue.description}\n  - *Fix:* {issue.remediation}\n"
         write_output(security_summary)
 
     elif args.mode == "cost":
-        cost_summary = "## 💰 Cost Optimization\n\n"
+        cost_summary = "## Cost Optimization\n\n"
         if not review_data.cost_issues:
-            cost_summary += "✅ *No obvious cost pitfalls detected!*\n"
+            cost_summary += "*No obvious cost pitfalls detected!*\n"
         else:
             for cost in review_data.cost_issues:
-                cost_summary += f"- 💸 **[{cost.risk_level} Risk] Impact: {cost.estimated_impact}** (📁 `{cost.file_name}` at **Line {cost.line_numbers}**)\n  - *Why:* {cost.explanation}\n  - *Tip:* {cost.optimization_tip}\n"
+                cost_summary += f"- **[{cost.risk_level} Risk] Impact: {cost.estimated_impact}** ({cost.file_name} at **Line {cost.line_numbers}**)\n  - *Why:* {cost.explanation}\n  - *Tip:* {cost.optimization_tip}\n"
         write_output(cost_summary)
 
     elif args.mode == "architecture":
-        architecture_summary = "## 🏗️ Architecture & Best Practices\n\n"
+        architecture_summary = "## Architecture & Best Practices\n\n"
         if not review_data.architecture_suggestions:
-            architecture_summary += "✅ *Architecture looks solid! No major improvements suggested.*\n"
+            architecture_summary += "*Architecture looks solid! No major improvements suggested.*\n"
         else:
             for arch in review_data.architecture_suggestions:
-                architecture_summary += f"### 🧩 {arch.component} (📁 `{arch.file_name}` at Lines {arch.line_numbers})\n"
+                architecture_summary += f"### {arch.component} ({arch.file_name} at Lines {arch.line_numbers})\n"
                 architecture_summary += f"- **Observation:** {arch.observation}\n"
                 architecture_summary += f"- **Recommendation:** {arch.recommendation}\n\n"
         write_output(architecture_summary)
 
     elif args.mode == "fixes":
-        fixes_summary = "## ✨ Suggested Fixes\n\n"
+        fixes_summary = "## Suggested Fixes\n\n"
         if not review_data.fix_suggestions:
-            fixes_summary += "✅ *No immediate code replacements recommended!*\n"
+            fixes_summary += "*No immediate code replacements recommended!*\n"
         else:
             for fix in review_data.fix_suggestions:
-                fixes_summary += f"### 📁 `{fix.file_name}` (Lines {fix.line_numbers})\n"
+                fixes_summary += f"### {fix.file_name} (Lines {fix.line_numbers})\n"
                 fixes_summary += f"**Why:** {fix.description}\n\n"
                 fixes_summary += f"```hcl\n{fix.code}\n```\n\n"
         write_output(fixes_summary)

@@ -37,7 +37,7 @@ For code issues, specify `file_name` and `line_numbers`.
 For dangerous changes, specify `file_name` and `line_numbers` when the plan identifies a source location.
 Provide a clear summary, security risks, cost optimization tips, architecture best practices, dangerous plan changes, and code fixes.
 
-When summarizing the terraform plan, strictly classify actions using these emojis: Create (🟢), Update (🟡), Replace (🟠), and Destroy (🔴).
+When summarizing the terraform plan, classify actions using these labels: Create, Update, Replace, and Destroy.
 """
 
 # Fetches changed Terraform files from a PR or pushed commit and adds line numbers.
@@ -58,7 +58,7 @@ def fetch_tf_code(repo_name, pr_number, token):
         files = list(repo.get_commit(commit_sha).files)
         source = f"commit {commit_sha}"
     else:
-        print("❌ Neither PR_NUMBER nor GITHUB_SHA is available.", flush=True)
+        print("Neither PR_NUMBER nor GITHUB_SHA is available.", flush=True)
         return ""
 
     tf_code_context = ""
@@ -69,11 +69,11 @@ def fetch_tf_code(repo_name, pr_number, token):
             try:
                 content_file = repo.get_contents(file.filename, ref=revision)
                 raw_content = content_file.decoded_content.decode("utf-8")
-                
+
                 # Inject line numbers
                 lines = raw_content.split('\n')
                 numbered_code = "\n".join([f"{i+1}: {line}" for i, line in enumerate(lines)])
-                
+
                 tf_code_context += f"### File: {file.filename}\n```hcl\n{numbered_code}\n```\n\n"
             except Exception as e:
                 print(f"Error reading file {file.filename}: {e}")
@@ -112,8 +112,8 @@ def analyze_with_openai(tf_code_context, plan_path, openai_key):
         parsed_response = response.choices[0].message.parsed
         if parsed_response is None:
             raise ValueError("OpenAI returned an empty structured response")
-        print("✅ OpenAI response received successfully!", flush=True)
+        print("OpenAI response received successfully!", flush=True)
         return parsed_response
     except Exception as e:
-        print(f"❌ OpenAI API Call Failed: {e}", flush=True)
+        print(f"OpenAI API Call Failed: {e}", flush=True)
         sys.exit(1)
