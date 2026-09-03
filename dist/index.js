@@ -27557,6 +27557,7 @@ module.exports = parseParams
 var __webpack_exports__ = {};
 const core = __nccwpck_require__(7484);
 const { execFileSync } = __nccwpck_require__(5317);
+const fs = __nccwpck_require__(9896);
 const path = __nccwpck_require__(6928);
 
 const DEFAULT_MODES = [
@@ -27576,14 +27577,15 @@ function run() {
     const githubToken = core.getInput('github_token', { required: true });
     const openaiKey = core.getInput('openai_api_key', { required: true });
     const planPath = core.getInput('plan_path') || '';
+    const event = readEventPayload();
 
     const env = {
       ...process.env,
       GITHUB_TOKEN: githubToken,
       OPENAI_API_KEY: openaiKey,
       PLAN_PATH: planPath,
-      PR_NUMBER: process.env.PR_NUMBER || '',
-      REPO_NAME: process.env.REPO_NAME || '',
+      PR_NUMBER: process.env.PR_NUMBER || event.pull_request?.number?.toString() || '',
+      REPO_NAME: process.env.REPO_NAME || process.env.GITHUB_REPOSITORY || '',
       GITHUB_SHA: process.env.GITHUB_SHA || ''
     };
 
@@ -27618,6 +27620,20 @@ function run() {
   } catch (error) {
     // Convert any setup or review failure into an Action failure.
     core.setFailed(error.message);
+  }
+}
+
+// Read the event payload to support pull request runs without custom variables.
+function readEventPayload() {
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (!eventPath) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(eventPath, 'utf8'));
+  } catch {
+    return {};
   }
 }
 
