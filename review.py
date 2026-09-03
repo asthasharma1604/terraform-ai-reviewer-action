@@ -55,9 +55,7 @@ def load_cached_data():
 
 # Prints review content and appends it to the GitHub Step Summary.
 def write_output(content: str, title: str):
-    print("\n=== \033[1mSTEP OUTPUT\033[0m ===\n")
     print(content)
-    print("\n===================\n")
     summary_file = os.getenv("GITHUB_STEP_SUMMARY")
     if summary_file:
         with open(summary_file, "a", encoding="utf-8") as f:
@@ -160,7 +158,7 @@ def main():
     review_data = load_cached_data()
 
     if mode == "dangerous":
-        dangerous_summary = "## **Dangerous Terraform Changes**\n\n"
+        dangerous_summary = ""
         if not review_data.dangerous_changes:
             dangerous_summary += "*Plan looks clean! No destructive changes or replacements detected.*\n"
         else:
@@ -172,7 +170,7 @@ def main():
         write_output(dangerous_summary, "**Dangerous Terraform Changes**")
 
     elif mode == "security":
-        security_summary = f"## **Security Review**\n\n**Summary:** {review_data.summary}\n\n"
+        security_summary = f"**Summary:** {review_data.summary}\n\n"
         if not review_data.security_issues:
             security_summary += "*No major security vulnerabilities found!*\n"
         else:
@@ -183,7 +181,7 @@ def main():
         write_output(security_summary, "**Security Review**")
 
     elif mode == "cost":
-        cost_summary = "## **Cost Optimization**\n\n"
+        cost_summary = ""
         if not review_data.cost_issues:
             cost_summary += "*No obvious cost pitfalls detected!*\n"
         else:
@@ -192,7 +190,7 @@ def main():
         write_output(cost_summary, "**Cost Optimization**")
 
     elif mode == "architecture":
-        architecture_summary = "## **Architecture & Best Practices**\n\n"
+        architecture_summary = ""
         if not review_data.architecture_suggestions:
             architecture_summary += "*Architecture looks solid! No major improvements suggested.*\n"
         else:
@@ -203,7 +201,7 @@ def main():
         write_output(architecture_summary, "**Architecture & Best Practices**")
 
     elif mode == "fixes":
-        fixes_summary = "## **Suggested Fixes**\n\n"
+        fixes_summary = ""
         if not review_data.fix_suggestions:
             fixes_summary += "*No immediate code replacements recommended!*\n"
         else:
