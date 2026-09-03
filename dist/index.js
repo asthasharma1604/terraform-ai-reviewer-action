@@ -27561,14 +27561,13 @@ const fs = __nccwpck_require__(9896);
 const path = __nccwpck_require__(6928);
 
 const DEFAULT_MODES = [
-  // Run the complete Terraform review workflow.
-  'analyze',
-  'security',
-  'cost',
-  'architecture',
-  'dangerous',
-  'fixes',
-  'inline'
+  { mode: 'analyze', title: 'Run AI Analysis' },
+  { mode: 'dangerous', title: 'Dangerous Changes' },
+  { mode: 'security', title: 'Security Review' },
+  { mode: 'cost', title: 'Cost Optimization' },
+  { mode: 'architecture', title: 'Architecture Suggestions' },
+  { mode: 'fixes', title: 'Fix Suggestions' },
+  { mode: 'inline', title: 'Post Inline PR Comments' }
 ];
 
 function run() {
@@ -27610,12 +27609,17 @@ function run() {
       stdio: 'inherit'
     });
 
-    // Execute each review mode with the prepared Python interpreter.
-    for (const mode of DEFAULT_MODES) {
-      execFileSync(pythonPath, [reviewScript, mode], {
-        env,
-        stdio: 'inherit'
-      });
+    // Group each mode in the GitHub Actions log.
+    for (const { mode, title } of DEFAULT_MODES) {
+      core.startGroup(title);
+      try {
+        execFileSync(pythonPath, [reviewScript, mode], {
+          env,
+          stdio: 'inherit'
+        });
+      } finally {
+        core.endGroup();
+      }
     }
   } catch (error) {
     // Convert any setup or review failure into an Action failure.
