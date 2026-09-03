@@ -27557,6 +27557,7 @@ module.exports = parseParams
 var __webpack_exports__ = {};
 const core = __nccwpck_require__(7484);
 const { execFileSync } = __nccwpck_require__(5317);
+const path = __nccwpck_require__(6928);
 
 const DEFAULT_MODES = [
   'analyze',
@@ -27584,8 +27585,11 @@ function run() {
       GITHUB_SHA: process.env.GITHUB_SHA || ''
     };
 
+    const actionRoot = process.env.GITHUB_ACTION_PATH || path.resolve(__dirname, '..');
+    const reviewScript = path.join(actionRoot, 'review.py');
+
     for (const mode of DEFAULT_MODES) {
-      execFileSync('python3', ['review.py', mode], {
+      execFileSync('python3', [reviewScript, mode], {
         env,
         stdio: 'inherit'
       });
