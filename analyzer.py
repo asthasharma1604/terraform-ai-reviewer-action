@@ -28,9 +28,12 @@ merely because the code could be improved in theory or because an optional conve
 If the Terraform is secure, cost-efficient, maintainable, and architecturally sound, return an
 empty list for that category.
 
-When a previously reported issue has been corrected, do not report it again. Return empty finding
-lists when there are no remaining actionable issues in the current Terraform code. Never invent a
-finding just to provide feedback.
+Evaluate every review category independently, including dangerous changes, security, cost,
+architecture, and code fixes. When the current Terraform is correct and follows the relevant
+best practices, return an empty list for that category. When a previously reported issue has been
+corrected, do not report it again. Do not create a recommendation or fix merely to populate a
+review mode. If no concrete issues remain in any category, return empty lists for every category
+and provide a clean summary; never invent a finding just to provide feedback.
 
 If `terraform plan` output is provided, aggressively analyze it to detect DANGEROUS CHANGES such as:
 - Resource destruction (destroy)
