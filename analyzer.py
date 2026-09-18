@@ -21,9 +21,16 @@ Architecture review requirements:
 - Report concrete improvements when the configuration has a meaningful architectural weakness or
     a clear best-practice gap. Include the affected file and line when possible.
 
-Do not leave cost_issues or architecture_suggestions empty merely because the code is syntactically
-valid or because no critical vulnerability exists. Empty lists are appropriate only after explicitly
-checking the categories above and finding no actionable recommendation.
+Only report a cost issue or architecture suggestion when it is specific and actionable. Report a
+missing best practice when applying it would provide a concrete reliability, security,
+maintainability, scalability, or cost benefit for this configuration. Do not make suggestions
+merely because the code could be improved in theory or because an optional convention is absent.
+If the Terraform is secure, cost-efficient, maintainable, and architecturally sound, return an
+empty list for that category.
+
+When a previously reported issue has been corrected, do not report it again. Return empty finding
+lists when there are no remaining actionable issues in the current Terraform code. Never invent a
+finding just to provide feedback.
 
 If `terraform plan` output is provided, aggressively analyze it to detect DANGEROUS CHANGES such as:
 - Resource destruction (destroy)
