@@ -43,7 +43,11 @@ def run_analysis():
     )
 
     print(f"Writing parsed analysis to cache file ({CACHE_FILE})...", flush=True)
+    
+    # Create the cache directory on the GitHub Actions runner if it doesn't exist
     CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    # Open the cache file in write mode
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
         f.write(review_data.model_dump_json())
 
@@ -61,7 +65,9 @@ def load_cached_data():
         sys.exit(0)
 
     try:
+        # Open the cached review result from the previous step
         with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            # Read the JSON data and convert it into a ReviewResponse object
             return ReviewResponse.model_validate(json.load(f))
     except (OSError, json.JSONDecodeError, ValueError) as e:
         print(f"Unable to load cached analysis from {CACHE_FILE}: {e}")
@@ -108,14 +114,16 @@ def main():
         write_output(review_sections["Suggested Fixes"], "Suggested Fixes")
 
     elif mode == "inline":
-        # Resolve the GitHub PR context once and pass it into downstream helpers so
-        # inline comments and the final review verdict share the same repo/PR object.
+        # Get the GitHub repository and pull request information.
         repo, _, pr, _ = validate_environment(require_openai=False)
         if not pr:
             print("No pull request is associated with this push. Skipping inline comments.")
             return
 
+        # Post inline comments on the pull request.
         post_inline_comments(load_cached_data, repo, pr)
+
+        # Update the pull request review and its commit status.
         update_pr_status(review_data, repo, pr)
     else:
         raise ValueError(f"Unsupported mode: {mode}")

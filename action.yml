@@ -5,12 +5,29 @@ inputs:
   openai_api_key:
     description: 'API Key for OpenAI'
     required: true
+
   github_token:
     description: 'GitHub Token'
     required: true
+
   plan_path:
     description: 'Path to the Terraform plan file'
     required: false
+
+  openai-model:
+    description: "OpenAI model used for Terraform review"
+    required: false
+    default: "gpt-4o-mini"
+
+  openai-timeout:
+    description: "Timeout in seconds for OpenAI requests"
+    required: false
+    default: "60"
+
+  thread-count:
+    description: "Number of parallel review threads"
+    required: false
+    default: "10"
 
 runs:
   using: 'node24'

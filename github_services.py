@@ -1,88 +1,273 @@
 import concurrent.futures
 import os
 import re
+from config import MAX_REQUEST_CHARS
 
-# Fetches a commit comparison through PyGithub's authenticated REST requester.
+# Compare two commits to find which files were changed.
 def compare_commits(repo, before_sha, after_sha):
+    # Build the GitHub API URL for comparing the two commits
     url = f"{repo.url}/compare/{before_sha}...{after_sha}"
+
+    # Send a request to GitHub to get the commit comparison
     _, comparison = repo._requester.requestJsonAndCheck("GET", url)
+
+    # Return the list of files changed between the two commits
     return comparison["files"]
 
-# Reads a file property from either a PyGithub object or REST response data.
+# Get a file property from either a dictionary or a PyGithub object.
 def file_value(file, key):
-    return file.get(key) if isinstance(file, dict) else getattr(file, key)
+    # If the file data is a dictionary, get the value using its key
+    if isinstance(file, dict):
+        return file.get(key)
+    # Otherwise, get the value from the object's attribute
+    return getattr(file, key)
 
-# Fetches all Terraform files from the repository at the reviewed revision.
+# Fetch only the changed lines from Terraform (.tf) files
+# in a pull request (PR) or a Git push.
+# This avoids sending complete files to the AI reviewer.
 def fetch_tf_code(repo, pr):
+
+    # Get the SHA of the current commit from GitHub Actions.
     commit_sha = os.getenv("GITHUB_SHA")
+
     print(f"Connecting to GitHub repo: {repo.name}...", flush=True)
-    
+
+    # Check whether this function is processing a pull request.
     if pr:
+        # Get the latest commit SHA from the PR branch.
+        # Review only the latest commit in the PR, not all prior PR changes.
         revision = pr.head.sha
-        source = f"PR #{pr.number} at {revision[:7]}"
+
+        # Create a readable label for log messages.
+        source = f"latest commit {revision[:7]} of PR #{pr.number}"
+
+        # Get only files changed by the latest commit.
+        changed_files = pr.head.repo.get_commit(revision).files
+
+    # If this is not a PR, check whether the workflow was triggered by a push.
     elif commit_sha:
+        # Get the SHA of the commit before the push.
+        # We need this to compare the old code with the new code.
+        base_revision = os.getenv("GITHUB_BEFORE")
+
+        # Stop if the previous commit SHA is missing or contains only zeros.
+        # An all-zero SHA can indicate that a new branch was pushed,
+        # so there may not be a usable previous commit to compare.
+        if not base_revision or base_revision == "0" * 40:
+            raise ValueError(
+                "GITHUB_BEFORE is required to identify changed files."
+            )
+
+        # Use the current commit as the latest version of the code.
         revision = commit_sha
+
+        # Create a readable label for logging.
         source = f"commit {commit_sha[:7]}"
+
+        # Compare the previous commit with the current commit.
+        # The result contains files changed between these two versions.
+        changed_files = compare_commits(
+            repo, base_revision, revision
+        )
+
+    # Stop if neither a PR nor a valid current commit is available.
     else:
-        print("Neither PR_NUMBER nor GITHUB_SHA is available.", flush=True)
-        return ""
+        raise ValueError(
+            "Neither PR nor GITHUB_SHA is available."
+        )
 
-    # Analysis uses the complete repository tree so a PR changing a non-Terraform
-    # file can still receive findings from Terraform files already in the project.
-    files = [
-        file
-        for file in repo.get_git_tree(revision, recursive=True).tree
-        if file.type == "blob" and file.path.endswith(".tf")
-    ]
+    # Store the formatted changes for each Terraform file.
+    # Each item will contain a filename and its changed lines.
+    sections = []
 
-    tf_code_context = ""
-    print(f"Found {len(files)} Terraform file(s) in {source}.", flush=True)
+    # Keep track of the total number of characters added.
+    # This helps prevent the request from exceeding the configured limit.
+    total_chars = 0
 
-    for file in files:
-        file_name = file.path
-        try:
-            content_file = repo.get_contents(file_name, ref=revision)
-            raw_content = content_file.decoded_content.decode("utf-8")
-            lines = raw_content.split("\n")
-            numbered_code = "\n".join([f"{i + 1}: {line}" for i, line in enumerate(lines)])
-            tf_code_context += f"### File: {file_name}\n```hcl\n{numbered_code}\n```\n\n"
-        except Exception as e:
-            print(f"Error reading file {file_name}: {e}")
+    # Examine every file returned by GitHub.
+    for file in changed_files:
 
-    return tf_code_context
+        # Get the current filename.
+        file_name = file_value(file, "filename")
 
-# Returns the file and line pairs changed since the previous revision.
-def changed_lines_since_previous_revision(repo, pr):
-    before_sha = os.getenv("GITHUB_BEFORE")
-    # Without an event SHA, the exact previously reviewed revision is unknown.
-    # Return None so existing comments remain suppressed rather than guessing.
-    if not before_sha or before_sha == pr.head.sha or before_sha == "0" * 40:
-        return None
+        # Get the original filename if the file was renamed.
+        # This value may be None if the file was not renamed.
+        previous_name = file_value(file, "previous_filename")
 
-    # Store new-side lines from the patch; deleted lines have no current line to comment on.
-    changed_lines = set()
-    changed_files = compare_commits(repo, before_sha, pr.head.sha)
-    for changed_file in changed_files:
-        patch = changed_file.get("patch") or ""
-        new_line = None
-        for patch_line in patch.splitlines():
-            hunk = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", patch_line)
-            if hunk:
-                new_line = int(hunk.group(1))
+        # Get the type of change reported by GitHub.
+        # Examples: added, modified, removed, or renamed.
+        status = file_value(file, "status")
+
+        # Check whether the current filename ends with ".tf".
+        # Also check the original filename in case a Terraform file
+        # was renamed to a different extension, such as ".txt".
+        is_tf = (
+            (file_name and file_name.endswith(".tf"))
+            or (previous_name and previous_name.endswith(".tf"))
+        )
+
+        # Skip files that are not Terraform files.
+        # Also skip files whose status is not one of the supported changes.
+        if not is_tf or status not in {
+            "added", "modified", "removed", "renamed"
+        }:
+            continue
+
+        # Get the diff patch provided by GitHub.
+        # A patch shows the lines added and deleted between two versions.
+        # It avoids downloading the complete file contents.
+        patch = file_value(file, "patch")
+
+        # GitHub may not provide a patch for some files,
+        # for example, files with very large changes or binary content.
+        # Log a warning so we know that the file was not reviewed.
+        if not patch:
+            print(
+                f"WARNING: No patch returned for {file_name}; "
+                "this file is not included in the review context.",
+                flush=True,
+            )
+            continue
+
+        # Create a list to store only the relevant lines from the patch.
+        diff_lines = []
+
+        # Read the patch one line at a time.
+        for line in patch.splitlines():
+
+            # Keep diff hunk headers.
+            # Example: @@ -10,3 +10,5 @@
+            # These headers identify the approximate locations of changes.
+            if line.startswith("@@"):
+                diff_lines.append(line)
+
+            # Skip GitHub's file header lines.
+            # "+++" and "---" identify the new and old files; they are not actual code changes.
+            elif line.startswith("+++") or line.startswith("---"):
                 continue
+
+            # Keep lines starting with "+" or "-".
+            elif line.startswith("+") or line.startswith("-"):
+                diff_lines.append(line)
+
+        # Skip the file if no useful diff lines were collected.
+        if not diff_lines:
+            continue
+
+        # Create a readable section for this file.
+        # The filename tells the AI which file the changes belong to.
+        # The status indicates whether the file was added, changed, etc.
+        # The diff code block preserves the "+" and "-" change markers.
+        section = (
+            f"### File: {file_name} (status: {status})\n"
+            f"```diff\n"
+            f"{"\n".join(diff_lines)}\n"
+            f"```\n"
+        )
+
+        # Add a blank line between file sections when necessary.
+        separator = "\n" if sections else ""
+
+        # Calculate how many characters this file would add,
+        # including the separator before the file section.
+        additional_chars = len(separator + section)
+
+        # Check the size BEFORE adding this file to the request.
+        # This prevents the collected Terraform diffs from exceeding
+        # MAX_REQUEST_CHARS.
+        if total_chars + additional_chars > MAX_REQUEST_CHARS:
+
+            # Stop with an error rather than silently dropping a changed file.
+            # The caller can then split the review into smaller requests.
+            raise ValueError(
+                f"Changed Terraform diffs exceed the "
+                f"{MAX_REQUEST_CHARS:,}-character limit. "
+                f"Stopped before adding {file_name}. "
+                "Split the review into smaller requests."
+            )
+
+        # Add this file's diff because it fits within the size limit.
+        sections.append(section)
+
+        # Update the running character count.
+        total_chars += additional_chars
+
+    # Join all the collected file sections into one string.
+    # This string will be passed to the AI reviewer.
+    result = "\n".join(sections)
+
+    # Print how many Terraform files were included
+    # and how many characters the final result contains.
+    print(
+        f"Found {len(sections)} Terraform diff(s) in {source}; "
+        f"{len(result):,} characters.",
+        flush=True,
+    )
+
+    # Return the changed Terraform code to the calling function.
+    return result
+
+# Find the added lines in the PR's complete diff.
+# These are the lines where GitHub can generally place new inline comments
+# on the RIGHT (new-file) side of the diff.
+def changed_lines_since_previous_revision(repo, pr):
+    # Compare the PR's target branch with the latest PR commit.
+    # This includes changes made across the PR, not just the latest push.
+    base_sha = pr.base.sha
+    head_sha = pr.head.sha
+
+    # Store pairs of (filename, new-file line number).
+    changed_lines = set()
+
+    # Get the changed files and their diff patches.
+    changed_files = compare_commits(repo, base_sha, head_sha)
+
+    for changed_file in changed_files:
+        # Read the filename and patch from the comparison result.
+        file_name = file_value(changed_file, "filename")
+        patch = file_value(changed_file, "patch") or ""
+
+        # We will use this variable to track the current line number in the new file.
+        new_line = None
+
+        # Read the patch one line at a time.
+        for patch_line in patch.splitlines():
+
+            # Each hunk header tells us where the changes occur.
+            # Example: @@ -10,2 +10,3 @@ means the new hunk starts at line 10.
+            if patch_line.startswith("@@"):
+                match = re.search(r"\+(\d+)(?:,\d+)?", patch_line)
+
+                # Skip malformed hunk headers safely.
+                if not match:
+                    new_line = None
+                    continue
+
+                # Save the starting line number
+                new_line = int(match.group(1))
+                continue
+
+            # Skip lines before the first section and special patch markers.
             if new_line is None or patch_line.startswith("\\"):
                 continue
+
+            # If a line was added, save its file name and line number.
             if patch_line.startswith("+"):
-                changed_lines.add((file_value(changed_file, "filename"), new_line))
+                changed_lines.add((file_name, new_line))
+                # Move to the next line in the new file.
                 new_line += 1
+
+            # If a line was deleted, do not move the new file's line number.
             elif patch_line.startswith("-"):
                 continue
+
+            # For an unchanged line, move to the next line in the new file.
             else:
                 new_line += 1
 
     return changed_lines
 
-# Converts AI findings into a GitHub review action and a compatibility status message.
+# Check the AI review results and decide what status to show on GitHub.
 def summarize_review_status(review_data):
     total_findings = (
         len(review_data.security_issues)
@@ -93,103 +278,190 @@ def summarize_review_status(review_data):
     )
 
     if total_findings == 0:
-        return "APPROVE", "No Terraform issues found by AI review."
+        return "APPROVE", "The Terraform AI review completed successfully. No findings were identified."
 
-    return "REQUEST_CHANGES", f"{total_findings} Terraform review finding(s) detected by AI review."
+    return "REQUEST_CHANGES", "The Terraform AI review identified findings that should be addressed before this PR is merged. Please review the inline comments for details and recommended fixes."
 
-# Updates the PR review decision and keeps the commit status in sync.
+# Update the pull request review and its commit status on GitHub.
 def update_pr_status(review_data, repo, pr):
-    review_event, description = summarize_review_status(review_data)
+    # Decide whether to approve the PR or request changes.
+    # Also get a message explaining the review result.
+    review_event, review_message = summarize_review_status(review_data)
+
+    # Set the commit status to success if the review is approved.
+    # Otherwise, mark it as failure.
     status_state = "success" if review_event == "APPROVE" else "failure"
 
     try:
-        pr.create_review(
-            event=review_event,
-            body=description,
-        )
-        print(f"Submitted PR review: {review_event} - {description}", flush=True)
+        # Submit the review to the pull request on GitHub.
+        pr.create_review(event=review_event, body=review_message)
+        # print(f"Submitted PR review: {review_event}", flush=True)
     except Exception as exc:
         print(f"Failed to submit PR review for {repo.full_name}#{pr.number}: {exc}", flush=True)
 
     try:
+        # Get the latest commit of the pull request and update its status.
         repo.get_commit(pr.head.sha).create_status(
             state=status_state,
             context="terraform-ai-reviewer",
-            description=description,
+            description=(
+                "Terraform AI review completed"
+                if review_event == "APPROVE"
+                else "Terraform AI review identified findings"
+            ),
         )
     except Exception as exc:
         print(f"Failed to update PR status for {repo.full_name}#{pr.number}: {exc}", flush=True)
 
-# Builds and posts deduplicated inline comments for the cached review findings.
+# Post inline review comments on GitHub and avoid posting duplicate comments.
 def post_inline_comments(load_cached_data, repo, pr):
+    # Get the latest commit of the pull request.
     commit_id = repo.get_commit(pr.head.sha)
+
+    # Get the lines that changed since the previous revision.
     changed_lines = changed_lines_since_previous_revision(repo, pr)
 
-    # GitHub may expose the current line or only the original line for older comments, so normalize both forms into the same deduplication key.
+    # Store the file names and line numbers that already have review comments.
     existing_comment_keys = set()
+
+    # Check the review comments that already exist on this pull request.
     for comment in pr.get_review_comments():
         comment_path = getattr(comment, "path", None)
-        comment_line = getattr(comment, "line", None) or getattr(comment, "original_line", None)
+
+        # Get the current line number of the comment.
+        comment_line = getattr(comment, "line", None)
+
+        # If the current line is not available, use the original line number.
+        if comment_line is None:
+            comment_line = getattr(comment, "original_line", None)
+
+        # Save the file name and line number if they are available.
         if comment_path and comment_line:
             existing_comment_keys.add((comment_path, int(comment_line)))
 
+    # Load the AI review results.
     review_data = load_cached_data()
 
     # Converts an AI line number or range into the line used by GitHub.
     def parse_line(line_str):
         try:
+            # Extract the last number from a line range (e.g., "5-10" becomes 10).
             return int(str(line_str).split("-")[-1].strip())
         except (TypeError, ValueError):
             return None
 
-    all_issues = []
-    issue_keys = set()
+    comments_to_post  = []
+    added_comments = set()
 
-    # Adds a finding unless it is duplicated or already reported on unchanged code.
-    def add_issue(path, line, body):
+    # Add a comment only if it is valid and not a duplicate.
+    def add_comment(path, line, body):
+        # Skip comments with a missing file name or line number.
         if not path or not line:
             return
-        key = (path, line)
-        # Never repeat a finding on an unchanged line. If the exact line changed,
-        # allow a fresh suggestion for the new revision.
-        if key in issue_keys:
-            return
-        # A matching comment is reusable until this exact path/line changes.
-        if key in existing_comment_keys and (changed_lines is None or key not in changed_lines):
-            return
-        issue_keys.add(key)
-        all_issues.append({"path": path, "line": line, "body": body})
 
+        # Use the file name and line number to identify the comment.
+        comment_key = (path, line)
+
+        # Do not add the same file and line more than once.
+        if comment_key in added_comments:
+            return
+
+        # Skip old comments if the line has not changed.
+        if comment_key in existing_comment_keys:
+            if changed_lines is None or comment_key not in changed_lines:
+                return
+
+        # Remember this comment so it is not added again.
+        added_comments.add(comment_key)
+
+        # Save the comment details for posting.
+        comments_to_post .append({
+            "path": path, 
+            "line": line, 
+            "body": body
+        })
+
+    # Add comments for security issues.
     for security_issue in review_data.security_issues:
         severity_level = security_issue.severity.upper()
-        body = f"<strong>Security Issue ({severity_level})</strong>\n{security_issue.issue}\n{security_issue.description}\nRemediation: {security_issue.remediation}"
-        add_issue(security_issue.file_name, parse_line(security_issue.line_numbers), body)
+        message = (
+            f"<strong>Security Issue ({severity_level})</strong>\n"
+            f"{security_issue.issue}\n"
+            f"{security_issue.description}\n"
+            f"Remediation: {security_issue.remediation}"
+        )
+        
+        add_comment(
+            security_issue.file_name, 
+            parse_line(security_issue.line_numbers), 
+            message
+        )
 
+    # Add comments for cost optimization issues.
     for cost_issue in review_data.cost_issues:
-        body = f"<strong>Cost Optimization ({cost_issue.risk_level} Risk)</strong>\nImpact: {cost_issue.estimated_impact}\n{cost_issue.explanation}\nTip: {cost_issue.optimization_tip}"
-        add_issue(cost_issue.file_name, parse_line(cost_issue.line_numbers), body)
+        message = (
+            f"<strong>Cost Optimization ({cost_issue.risk_level} Risk)</strong>\n"
+            f"Impact: {cost_issue.estimated_impact}\n"
+            f"{cost_issue.explanation}\n"
+            f"Tip: {cost_issue.optimization_tip}"
+        )
+        add_comment(
+            cost_issue.file_name, 
+            parse_line(cost_issue.line_numbers), 
+            message
+        )
 
+    # Add comments for architecture suggestions.
     for architecture_issue in review_data.architecture_suggestions:
-        body = f"<strong>Architecture Suggestion</strong>\n{architecture_issue.component}\n{architecture_issue.observation}\nRecommendation: {architecture_issue.recommendation}"
-        add_issue(architecture_issue.file_name, parse_line(architecture_issue.line_numbers), body)
+        message = (
+            f"<strong>Architecture Suggestion</strong>\n"
+            f"{architecture_issue.component}\n"
+            f"{architecture_issue.observation}\n"
+            f"Recommendation: {architecture_issue.recommendation}"
+        )
+        add_comment(
+            architecture_issue.file_name, 
+            parse_line(architecture_issue.line_numbers), 
+            message
+        )
 
+    # Add comments for dangerous Terraform changes.
     for dangerous_change in review_data.dangerous_changes:
         if dangerous_change.file_name and dangerous_change.line_numbers:
-            body = f"<strong>Dangerous Terraform Change</strong>\n{dangerous_change.resource_name} will be {dangerous_change.action}.\n{dangerous_change.why_it_matters}\nRecommendation: {dangerous_change.recommendation}"
-            add_issue(dangerous_change.file_name, parse_line(dangerous_change.line_numbers), body)
+            message = (
+                f"<strong>Dangerous Terraform Change</strong>\n"
+                f"{dangerous_change.resource_name} will be {dangerous_change.action}.\n"
+                f"{dangerous_change.why_it_matters}\n"
+                f"Recommendation: {dangerous_change.recommendation}"
+            )
+            add_comment(
+                dangerous_change.file_name, 
+                parse_line(dangerous_change.line_numbers), 
+                message
+            )
 
+    # Add comments for suggested code fixes.
     for fix_suggestion in review_data.fix_suggestions:
-        body = f"<strong>Suggested Fix</strong>\n{fix_suggestion.description}\n```hcl\n{fix_suggestion.code}\n```"
-        add_issue(fix_suggestion.file_name, parse_line(fix_suggestion.line_numbers), body)
+        message = (
+            f"<strong>Suggested Fix</strong>\n"
+            f"{fix_suggestion.description}\n"
+            f"```hcl\n{fix_suggestion.code}\n```"
+        )
+        add_comment(
+            fix_suggestion.file_name, 
+            parse_line(fix_suggestion.line_numbers), 
+            message
+        )
 
-    if not all_issues:
-        print("No inline issues found. Skipping inline comments.")
+    if not comments_to_post :
+        print("No new inline comments to post.")
         return
 
-    print(f"Preparing to post {len(all_issues)} inline comments...")
+    # Show how many comments will be posted.
+    print(f"Posting {len(comments_to_post)} inline comments...")
 
-    # Posts one prepared comment and keeps one failed request from stopping others.
-    def post_single_comment(comment_issue):
+    # Post one comment on GitHub.
+    def post_comment(comment_issue):
         try:
             pr.create_review_comment(
                 body=comment_issue["body"],
@@ -201,9 +473,13 @@ def post_inline_comments(load_cached_data, repo, pr):
             print(f"Posted inline comment on {comment_issue['path']} (Line {comment_issue['line']})", flush=True)
         except Exception as e:
             print(f"Skipped {comment_issue['path']} (Line {comment_issue['line']}): {e}", flush=True)
+            return None
 
-    print(f"Firing off {len(all_issues)} comments concurrently...", flush=True)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        executor.map(post_single_comment, all_issues)
+    # Post comments using multiple threads.
+    thread_count = int(os.getenv("THREAD_COUNT", "10"))
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=thread_count
+    ) as executor:
+        list(executor.map(post_comment, comments_to_post))
 
     print("Finished posting all concurrent comments!", flush=True)

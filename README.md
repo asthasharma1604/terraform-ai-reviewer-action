@@ -1,69 +1,32 @@
 # Terraform AI Reviewer Action
 
-A GitHub Action that reviews Terraform changes with OpenAI. It fetches the 
-current contents of changed Terraform files, adds line numbers, optionally 
-reads a Terraform plan, and reports AI analysis, dangerous changes, security 
-findings, cost optimization opportunities, architecture suggestions, HCL fixes, 
-and inline pull request comments.
+A GitHub Action that uses OpenAI to review Terraform changes for dangerous changes, security risks, cost optimization opportunities, architecture improvements, and suggested fixes.
 
-## What It Reviews
+## The problem
 
-The action runs seven review passes:
+Terraform pull requests can change infrastructure in ways that are difficult to assess quickly: a small code change can expose a service, weaken permissions, remove a resource, or increase ongoing costs. This Action adds an AI-generated review to help reviewers spot potential issues and consider remediations. It is an aid to human review, not a substitute for it or for tools such as `terraform validate`, `tflint`, and Checkov.
 
-- **AI Analysis**: analyzes the changed Terraform files and prepares findings
-  for the specialized review passes.
-- **Dangerous Changes**: identifies Terraform changes that could cause
-  destructive or high-impact infrastructure behavior.
-- **Security**: identifies security issues and gives each finding a severity,
-  affected file and line, risk description, and remediation.
-- **Cost**: identifies potential cost pitfalls and provides an estimated
-  impact and optimization tip.
-- **Architecture**: suggests improvements to the Terraform architecture and
-  resource organization.
-- **Fixes**: provides suggested Terraform code changes for the reported
-  findings.
-- **Inline Comments**: posts applicable findings as inline pull request
-  comments.
+## Data Privacy and Security
 
-Only changed `.tf` files that are not removed are analyzed. On the first review,
-the action reviews their complete contents at the current revision. On later
-pushes, it compares the new revision with the previous revision and reviews
-only files changed by that push. Inline comments are deduplicated by file and
-line, so a finding already commented on the pull request is not posted again.
-If the change does not include Terraform files, the action skips the review.
+This action sends Terraform source code and, when provided, Terraform plan output to OpenAI for AI-powered review.
 
-The `analyze` mode calls OpenAI once and stores the structured result in a
-temporary cache on the runner. The remaining report modes reuse that result;
-if the cache is missing, they run the AI analysis first and then load the new
-result. The `inline` mode posts security, cost, architecture, dangerous-change,
-and fix findings to the pull request when a source file and line are available.
+Before using this action, ensure that your organization's security policies allow sharing infrastructure code with OpenAI.
 
-## Prerequisites
-  Only changed `.tf` files that are not removed are analyzed. On the first review,
-- An OpenAI API key.
-- Python 3 with the `venv` module available on the runner.
+Do not include secrets, credentials, or sensitive information in Terraform files or plan output.
 
-The action uses the GitHub token to read changed files through the GitHub API.
-No checkout step is required. The action creates an isolated virtual
-environment in the runner's temporary directory and installs the packages
-listed in `requirements.txt`. The workflow must grant the action permission to 
-read repository contents. Add `pull-requests: write` when using a `pull_request` 
-trigger and posting inline comments, and add `statuses: write` so the action can
-update the pull request commit status as well.
+## Setup
 
-## Usage
-
-Create a workflow such as `.github/workflows/terraform-review.yml`:
+1. Add an OpenAI API key as Terraform repository or organization Actions secret named `OPENAI_API_KEY`.
+2. Add a workflow to the Terraform repository. The example below runs on pull requests and passes an optional Terraform plan to the Action.
+3. Replace `OWNER/REPOSITORY@REF` with this Action's repository and a tag or commit reference.
 
 ```yaml
-name: Terraform AI Review
+name: Terraform AI review
 
 on:
-  push:
-    branches: 
-      - '**'
   pull_request:
-    types: [opened, synchronize, reopened]
+    paths:
+      - "**/*.tf"
 
 permissions:
   contents: read
@@ -74,67 +37,56 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - name: Review Terraform changes
-        uses: asthasharma1604/terraform-ai-reviewer-action@main
+      - uses: actions/checkout@v4
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+      - name: Initialize Terraform
+        run: terraform init -backend=false
+      - name: Generate plan
+        run: |
+          terraform plan -no-color -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+      - name: Review Terraform
+        uses: OWNER/REPOSITORY@REF
         with:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Optional: path to a generated Terraform plan on the runner.
-          plan_path: terraform.plan
+          github_token: ${{ secrets.github.token }}
+          plan_path: plan.txt
 ```
 
-Both `openai_api_key` and `github_token` are required inputs. The action maps 
-these inputs to `OPENAI_API_KEY` and `GITHUB_TOKEN`. The optional `plan_path` 
-input supplies Terraform plan output for dangerous-change analysis. It uses 
-`PR_NUMBER` for pull request events and `GITHUB_SHA` for push events. Inline 
-comments are skipped for pushes because there is no pull request review to
-attach them to. The action also submits a GitHub PR review decision for the pull request head
-SHA using the review events `APPROVE` and `REQUEST_CHANGES`. It keeps the
-commit status in sync using the context `terraform-ai-reviewer` so the
-check summary stays consistent with the review decision. When a pushed commit is
-already associated with a pull request, the push run is skipped so the pull
-request workflow performs the review once.
+Authenticate Terraform providers before generating a plan if your configuration needs cloud credentials. The plan is optional; omit `plan_path` to review source only.
 
-## Outputs
+## Configuration
 
-The action writes review results to:
+| Input            | Required | Description |
+| ---------------- | -------- | ----------- |
+| `openai_api_key` | Yes      | OpenAI API key |
+| `github_token`   | Yes      | GitHub token used by GitHub Action mode to read the repository and publish a review/status |
+| `plan_path`      | No       | Path to a text file containing `terraform show -no-color` output |
 
-- The workflow log.
-- The GitHub Actions step summary through `GITHUB_STEP_SUMMARY`.
+Terraform source and the optional plan are sent to OpenAI for analysis. Plans can include sensitive values; check your organization's data-handling requirements before enabling plan review, and do not include data you are not permitted to share.
 
-Results are reused between the review modes through a JSON cache file in the
-runner's temporary directory. The cache is keyed by the GitHub workflow run,
-so concurrent or later runs do not reuse another run's analysis. Incremental
-review state comes from the previous commit in the GitHub event or pull
-request history, while existing inline comments are checked directly on the
-pull request.
+In GitHub mode, the review sends only changed lines from `.tf` files changed in the latest PR commit or push commit. Earlier commits in an open PR are not included. The complete OpenAI request—including instructions, changed-file diffs, and optional plan—is limited to 100,000 characters. Changed-file diffs are prioritized; an oversized plan is truncated with an explicit marker to fit the remaining budget. The review stops with an error if the instructions and changed-file diffs alone exceed the limit.
+
+For environment variable names used by the Python review script, see [`.env.example`](.env.example). The Action itself receives its secrets through its inputs; `.env.example` is a reference.
+
+## Promised vs. built
+
+| Capability | Status |
+| ---------- | ------ |
+| AI review for dangerous changes, security, cost, architecture, and fixes | Implemented |
+| GitHub pull request review comments and commit status | Implemented in inline mode; requires appropriate token permissions |
+| Optional Terraform plan context | Implemented when `plan_path` is supplied |
+
+## Team
+
+Astha Sharma - Project development, AI reviewer implementation, and prompt engineering, testing
+Saloni Agrawal - prompt engineering, GitHub Actions integration and workflow automation, testing
 
 ## Development
 
-The main files are:
+The GitHub Action uses Node.js 24 and installs the Python dependencies from [`requirements.txt`](requirements.txt) when it runs. To rebuild its JavaScript bundle after changing `src/index.js`:
 
-- `action.yml`: JavaScript action metadata and inputs.
-- `src/index.js`: action entry point, dependency setup, and review-mode runner.
-- `dist/index.js`: bundled JavaScript executed by GitHub Actions.
-- `review.py`: command-line entry point and Markdown output formatting.
-- `analyzer.py`: GitHub pull request retrieval and OpenAI analysis.
-- `config.py`: environment validation and cache configuration.
-- `models.py`: Pydantic response models used for structured OpenAI output.
-
-To run the Python review code locally, install the action dependencies and provide 
-the required environment variables:
-
-```bash
-pip install PyGithub openai pydantic
-
-export GITHUB_TOKEN=your-github-token
-export OPENAI_API_KEY=your-openai-api-key
-export PR_NUMBER=123
-export REPO_NAME=owner/repository
-
-python review.py --mode security
+```sh
+npm run build
 ```
-
-Valid modes are **analyze**, **dangerous**, **security**, **cost**,
-**architecture**, **fixes**, and **inline**. The JavaScript action runs them 
-in that order automatically.
