@@ -102,6 +102,7 @@ Do not output a single word, greeting, summary, or confirmation. If the code is 
 
 # Sends Terraform code and an optional plan to OpenAI for a structured review.
 def analyze_with_openai(tf_code_context, plan_path, openai_key):
+    print(f"Analyzing Terraform code:\n{tf_code_context}", flush=True)
     plan_context = ""
     # Check whether a plan path is provided and the file exists
     if plan_path and os.path.exists(plan_path):
