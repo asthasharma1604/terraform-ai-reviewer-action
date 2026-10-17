@@ -29,7 +29,8 @@ function run() {
       PR_NUMBER: process.env.PR_NUMBER || event.pull_request?.number?.toString() || '',
       REPO_NAME: process.env.REPO_NAME || process.env.GITHUB_REPOSITORY || '',
       GITHUB_SHA: process.env.GITHUB_SHA || '',
-      GITHUB_BEFORE: process.env.GITHUB_BEFORE || event.before || ''
+      GITHUB_BEFORE: process.env.GITHUB_BEFORE || event.before || '',
+      GITHUB_ACTION: process.env.GITHUB_ACTION || event.action || 'opened',
     };
 
     // Resolve files from this action, not the consumer repository.

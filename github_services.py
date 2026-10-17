@@ -38,12 +38,12 @@ def fetch_tf_code(repo, pr):
         revision = pr.head.sha
 
         # On an existing PR receiving new commits, review only the new push.
-        if os.getenv("GITHUB_EVENT_ACTION") == "synchronize":
-            base_revision = os.getenv("GITHUB_EVENT_BEFORE")
+        if os.getenv("GITHUB_ACTION") == "synchronize":
+            base_revision = os.getenv("GITHUB_BEFORE")
 
             if not base_revision or base_revision == "0" * 40:
                 raise ValueError(
-                    "GITHUB_EVENT_BEFORE is required for PR updates."
+                    "GITHUB_BEFORE is required for PR updates."
                 )
 
             source = f"new changes pushed to PR #{pr.number}"
@@ -62,14 +62,14 @@ def fetch_tf_code(repo, pr):
     elif commit_sha:
         # Get the SHA of the commit before the push.
         # We need this to compare the old code with the new code.
-        base_revision = os.getenv("GITHUB_EVENT_BEFORE")
+        base_revision = os.getenv("GITHUB_BEFORE")
 
         # Stop if the previous commit SHA is missing or contains only zeros.
         # An all-zero SHA can indicate that a new branch was pushed,
         # so there may not be a usable previous commit to compare.
         if not base_revision or base_revision == "0" * 40:
             raise ValueError(
-                "GITHUB_EVENT_BEFORE is required to identify changed files."
+                "GITHUB_BEFORE is required to identify changed files."
             )
 
         # Use the current commit as the latest version of the code.
