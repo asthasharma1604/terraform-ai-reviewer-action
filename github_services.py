@@ -31,7 +31,7 @@ def fetch_tf_code(repo, pr):
     commit_sha = os.getenv("GITHUB_SHA")
     
 
-    print(f"Connecting to GitHub repo: {repo.name}... {os.getenv("GITHUB_EVENT_BEFORE")} & {os.getenv("GITHUB_BEFORE")}", flush=True)
+    print(f"Connecting to GitHub repo: {repo.name}...", flush=True)
 
     # Check whether this function is processing a pull request.
     if pr:
@@ -63,14 +63,14 @@ def fetch_tf_code(repo, pr):
     elif commit_sha:
         # Get the SHA of the commit before the push.
         # We need this to compare the old code with the new code.
-        base_revision = os.getenv("GITHUB_BEFORE")
+        base_revision = os.getenv("GITHUB_EVENT_BEFORE")
 
         # Stop if the previous commit SHA is missing or contains only zeros.
         # An all-zero SHA can indicate that a new branch was pushed,
         # so there may not be a usable previous commit to compare.
         if not base_revision or base_revision == "0" * 40:
             raise ValueError(
-                "GITHUB_BEFORE is required to identify changed files."
+                "GITHUB_EVENT_BEFORE is required to identify changed files."
             )
 
         # Use the current commit as the latest version of the code.
