@@ -31,7 +31,7 @@ def fetch_tf_code(repo, pr):
     commit_sha = os.getenv("GITHUB_SHA")
     
 
-    print(f"Connecting to GitHub repo: {repo.name}...Action: {os.getenv("GITHUB_EVENT_ACTION")}", flush=True)
+    print(f"Connecting to GitHub repo: {repo.name}... {os.getenv("GITHUB_EVENT_BEFORE")} & {os.getenv("GITHUB_BEFORE")}", flush=True)
 
     # Check whether this function is processing a pull request.
     if pr:
