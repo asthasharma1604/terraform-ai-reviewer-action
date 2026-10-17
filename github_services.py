@@ -35,27 +35,41 @@ def fetch_tf_code(repo, pr):
     # Check whether this function is processing a pull request.
     if pr:
         # Get the latest commit SHA from the PR branch.
-        # Review only the latest commit in the PR, not all prior PR changes.
         revision = pr.head.sha
 
-        # Create a readable label for log messages.
-        source = f"latest commit {revision[:7]} of PR #{pr.number}"
+        # On an existing PR receiving new commits, review only the new push.
+        if os.getenv("GITHUB_EVENT_ACTION") == "synchronize":
+            base_revision = os.getenv("GITHUB_EVENT_BEFORE")
 
-        # Get only files changed by the latest commit.
-        changed_files = pr.head.repo.get_commit(revision).files
+            if not base_revision or base_revision == "0" * 40:
+                raise ValueError(
+                    "GITHUB_EVENT_BEFORE is required for PR updates."
+                )
+
+            source = f"new changes pushed to PR #{pr.number}"
+        else:
+            # For reopened PRs or other events, use the full PR diff.
+            base_revision = pr.base.sha
+            source = f"all changes in PR #{pr.number}"
+
+        changed_files = compare_commits(
+            pr.head.repo,
+            base_revision,
+            revision,
+        )
 
     # If this is not a PR, check whether the workflow was triggered by a push.
     elif commit_sha:
         # Get the SHA of the commit before the push.
         # We need this to compare the old code with the new code.
-        base_revision = os.getenv("GITHUB_BEFORE")
+        base_revision = os.getenv("GITHUB_EVENT_BEFORE")
 
         # Stop if the previous commit SHA is missing or contains only zeros.
         # An all-zero SHA can indicate that a new branch was pushed,
         # so there may not be a usable previous commit to compare.
         if not base_revision or base_revision == "0" * 40:
             raise ValueError(
-                "GITHUB_BEFORE is required to identify changed files."
+                "GITHUB_EVENT_BEFORE is required to identify changed files."
             )
 
         # Use the current commit as the latest version of the code.
