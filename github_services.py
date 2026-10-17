@@ -31,7 +31,7 @@ def fetch_tf_code(repo, pr):
     commit_sha = os.getenv("GITHUB_SHA")
     
 
-    print(f"Connecting to GitHub repo: {repo.name}...{os.getenv("GITHUB_ACTION")}", flush=True)
+    print(f"Connecting to GitHub repo: {repo.name}...Action: {os.getenv("GITHUB_EVENT_ACTION")}", flush=True)
 
     # Check whether this function is processing a pull request.
     if pr:
@@ -39,12 +39,12 @@ def fetch_tf_code(repo, pr):
         revision = pr.head.sha
 
         # On an existing PR receiving new commits, review only the new push.
-        if os.getenv("GITHUB_ACTION") == "synchronize":
-            base_revision = os.getenv("GITHUB_BEFORE")
+        if os.getenv("GITHUB_EVENT_ACTION") == "synchronize":
+            base_revision = os.getenv("GITHUB_EVENT_BEFORE")
 
             if not base_revision or base_revision == "0" * 40:
                 raise ValueError(
-                    "GITHUB_BEFORE is required for PR updates."
+                    "GITHUB_EVENT_BEFORE is required for PR updates."
                 )
 
             source = f"new changes pushed to PR #{pr.number}"
